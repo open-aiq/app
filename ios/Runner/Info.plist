@@ -26,6 +26,20 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAccessorySetupKitSupports</key>
+	<array>
+		<string>Bluetooth</string>
+	</array>
+	<key>NSAccessorySetupBluetoothServices</key>
+	<array>
+		<string>6E400001-B5A3-F393-E0A9-E50E24DCCA9E</string>
+	</array>
+	<key>NSAccessorySetupBluetoothNames</key>
+	<array>
+		<string>AirMonitor-</string>
+	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Open AIQ uses Bluetooth to set up your air monitor and show its live readings.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
