@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>App</string>
+	<string>Open AIQ</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -38,6 +38,15 @@
 	<array>
 		<string>AirMonitor-</string>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Allows plain HTTP only to local-network hosts (LAN IPs, .local), for
+		     `make dev`. Internet traffic still requires HTTPS. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Open AIQ connects to a development server on your local network.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Open AIQ uses Bluetooth to set up your air monitor and show its live readings.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
