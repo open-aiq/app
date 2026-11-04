@@ -1,0 +1,7 @@
+# Release signing for Android. Copy to android/key.properties (git-ignored) and
+# fill in the passwords chosen with `make keystore`. Never commit the real file
+# or the keystore itself.
+storeFile=/Users/you/.config/open-aiq/upload-keystore.jks
+storePassword=
+keyAlias=upload
+keyPassword=
