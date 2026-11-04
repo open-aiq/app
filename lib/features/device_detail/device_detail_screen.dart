@@ -17,6 +17,7 @@ import '../firmware/firmware_screen.dart';
 import '../logs/logs_screen.dart';
 import '../provisioning/connect_screen.dart';
 import '../settings/device_settings_screen.dart';
+import 'history_series.dart';
 
 class DeviceDetailScreen extends StatefulWidget {
   const DeviceDetailScreen({super.key, required this.device});
@@ -281,9 +282,14 @@ class _OnlineTabState extends State<_OnlineTab>
                   onRetry: _loadHistory,
                 );
               }
-              final points = snapshot.data ?? const [];
-              if (points.isEmpty) return const Text('No data for this period.');
-              return SizedBox(height: 220, child: _AqiChart(points: points));
+              final slots = buildHistorySeries(
+                snapshot.data ?? const [],
+                _timeline,
+              );
+              if (!slots.any((s) => s.aqi != null)) {
+                return const Text('No data for this period.');
+              }
+              return SizedBox(height: 220, child: _AqiChart(slots: slots));
             },
           ),
         ],
@@ -314,31 +320,61 @@ class _MetricGrid extends StatelessWidget {
 }
 
 class _AqiChart extends StatelessWidget {
-  const _AqiChart({required this.points});
+  const _AqiChart({required this.slots});
 
-  final List<HistoricalPoint> points;
+  /// Every bucket of the timeline; empty buckets break the line.
+  final List<HistorySlot> slots;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final spots = [
-      for (var i = 0; i < points.length; i++)
-        FlSpot(i.toDouble(), points[i].metrics.aqi.toDouble()),
+      for (var i = 0; i < slots.length; i++)
+        if (slots[i].aqi case final aqi?)
+          FlSpot(i.toDouble(), aqi.toDouble())
+        else
+          FlSpot.nullSpot,
     ];
+    // A reading with no neighbouring readings can't be drawn as a line.
+    bool hasData(int i) => i >= 0 && i < slots.length && slots[i].aqi != null;
+    final isolated = {
+      for (var i = 0; i < slots.length; i++)
+        if (hasData(i) && !hasData(i - 1) && !hasData(i + 1)) i,
+    };
     final maxAqi = spots
+        .where((s) => s.isNotNull())
         .map((s) => s.y)
         .fold<double>(50, (a, b) => a > b ? a : b);
-    final step = (points.length / 4).ceil().clamp(1, points.length);
+    final step = (slots.length / 4).ceil().clamp(1, slots.length);
+    final latest = slots.lastWhere((s) => s.aqi != null);
+    final missing = slots.where((s) => s.aqi == null).length;
     return Semantics(
       label:
-          'AQI history chart, ${points.length} points, latest ${points.last.metrics.aqi} '
-          '(${aqiInfo(points.last.metrics.aqi).label})',
+          'AQI history chart, ${slots.length} periods'
+          '${missing > 0 ? ', $missing without data' : ''}, latest ${latest.aqi} '
+          '(${aqiInfo(latest.aqi).label}) at ${latest.tooltipLabel}',
       child: LineChart(
         LineChartData(
+          minX: 0,
+          maxX: (slots.length - 1).toDouble(),
           minY: 0,
           maxY: (maxAqi * 1.2).ceilToDouble(),
           gridData: const FlGridData(drawVerticalLine: false),
           borderData: FlBorderData(show: false),
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              fitInsideHorizontally: true,
+              getTooltipItems: (touched) => [
+                for (final spot in touched)
+                  LineTooltipItem(
+                    '${slots[spot.x.round()].tooltipLabel}\n'
+                    'AQI ${spot.y.round()}',
+                    TextStyle(color: scheme.onInverseSurface, fontSize: 12),
+                  ),
+              ],
+              getTooltipColor: (_) => scheme.inverseSurface,
+            ),
+          ),
           titlesData: FlTitlesData(
             topTitles: const AxisTitles(),
             rightTitles: const AxisTitles(),
@@ -351,13 +387,13 @@ class _AqiChart extends StatelessWidget {
                 interval: step.toDouble(),
                 getTitlesWidget: (value, meta) {
                   final index = value.round();
-                  if (index < 0 || index >= points.length) {
+                  if (index < 0 || index >= slots.length) {
                     return const SizedBox.shrink();
                   }
                   return SideTitleWidget(
                     meta: meta,
                     child: Text(
-                      points[index].label,
+                      slots[index].axisLabel,
                       style: const TextStyle(fontSize: 10),
                     ),
                   );
@@ -372,7 +408,10 @@ class _AqiChart extends StatelessWidget {
               preventCurveOverShooting: true,
               color: scheme.primary,
               barWidth: 3,
-              dotData: FlDotData(show: points.length < 15),
+              dotData: FlDotData(
+                checkToShowDot: (spot, _) =>
+                    slots.length < 15 || isolated.contains(spot.x.round()),
+              ),
               belowBarData: BarAreaData(
                 show: true,
                 color: scheme.primary.withValues(alpha: 0.12),
