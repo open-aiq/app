@@ -40,6 +40,8 @@
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Open AIQ uses Bluetooth to set up your air monitor and show its live readings.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Open AIQ uses your location to record where your air monitor is installed.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
