@@ -20,6 +20,7 @@ class FirmwareScreen extends StatefulWidget {
 class _FirmwareScreenState extends State<FirmwareScreen> {
   DeviceOta? _state;
   Object? _loadError;
+  DateTime? _updatedAt;
   String? _actionError;
   bool _acting = false;
   Timer? _poll;
@@ -46,6 +47,7 @@ class _FirmwareScreenState extends State<FirmwareScreen> {
         setState(() {
           _state = state;
           _loadError = null;
+          _updatedAt = DateTime.now();
         });
       }
     } catch (e) {
@@ -116,12 +118,27 @@ class _FirmwareScreenState extends State<FirmwareScreen> {
                           : 'Could not load firmware status.',
                       onRetry: _load,
                     )
-                  : const LoadingView())
+                  : const Skeleton(
+                      label: 'Loading firmware status',
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SkeletonBlock(width: 220, height: 40),
+                            SizedBox(height: 24),
+                            SkeletonBlock(height: 120, radius: 12),
+                          ],
+                        ),
+                      ),
+                    ))
             : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
+                    if (_loadError != null)
+                      QuietNote(updatedAt: _updatedAt, onRetry: _load),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.memory),

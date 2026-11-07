@@ -9,6 +9,7 @@ import '../../api/api_client.dart';
 import '../../api/models.dart';
 import '../../ble/protocol.dart';
 import '../../services.dart';
+import '../../widgets/keep_last.dart';
 import '../../widgets/ota_badge.dart';
 import '../../widgets/states.dart';
 import '../../widgets/tiles.dart';
@@ -115,9 +116,13 @@ class _OnlineTabState extends State<_OnlineTab>
     'yearly': '12 mo',
   };
 
-  Future<CurrentReading?>? _current;
-  Future<List<HistoricalPoint>>? _history;
+  final _current = KeepLast<CurrentReading?>();
+  final _history = KeepLast<List<HistoricalPoint>>();
   String _timeline = 'daily';
+
+  /// The range the chart on screen belongs to; it lags [_timeline] while a
+  /// new range loads, so the old chart stays put until the new one arrives.
+  String _shownTimeline = 'daily';
   Timer? _refresh;
 
   @override
@@ -126,7 +131,7 @@ class _OnlineTabState extends State<_OnlineTab>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_current == null) {
+    if (_refresh == null) {
       _load();
       // Devices upload every 10 minutes; refreshing every minute is plenty.
       _refresh = Timer.periodic(
@@ -139,33 +144,32 @@ class _OnlineTabState extends State<_OnlineTab>
   @override
   void dispose() {
     _refresh?.cancel();
+    _current.dispose();
+    _history.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    _loadCurrent();
-    _loadHistory();
-    await Future.wait([
-      _current!.catchError((_) => null),
-      _history!.catchError((_) => <HistoricalPoint>[]),
-    ]);
-  }
+  Future<void> _load() => Future.wait([_loadCurrent(), _loadHistory()]);
 
-  void _loadCurrent() {
+  Future<void> _loadCurrent() {
     final api = AppServices.of(context).api;
-    setState(() {
-      _current = api
-          .current(widget.device.id)
-          .then<CurrentReading?>((value) => value)
-          .catchError(
-            (Object e) => e is ApiException && e.isNoReadings ? null : throw e,
-          );
+    return _current.load(() async {
+      try {
+        return await api.current(widget.device.id);
+      } on ApiException catch (e) {
+        if (e.isNoReadings) return null;
+        rethrow;
+      }
     });
   }
 
-  void _loadHistory() {
+  Future<void> _loadHistory() async {
     final api = AppServices.of(context).api;
-    setState(() => _history = api.historical(widget.device.id, _timeline));
+    final timeline = _timeline;
+    await _history.load(() => api.historical(widget.device.id, timeline));
+    if (mounted && _history.error == null && timeline == _timeline) {
+      setState(() => _shownTimeline = timeline);
+    }
   }
 
   @override
@@ -176,26 +180,36 @@ class _OnlineTabState extends State<_OnlineTab>
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          FutureBuilder<CurrentReading?>(
-            future: _current,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done &&
-                  !snapshot.hasData) {
-                return const SizedBox(height: 160, child: LoadingView());
+          ListenableBuilder(
+            listenable: _current,
+            builder: (context, _) {
+              if (_current.isFirstLoad) {
+                return const _CurrentSkeleton();
               }
-              if (snapshot.hasError) {
+              if (!_current.hasData) {
                 return ErrorView(
-                  message: _message(snapshot.error),
+                  message: _message(_current.error),
                   onRetry: _loadCurrent,
                 );
               }
-              final current = snapshot.data;
+              final current = _current.data;
+              final note = _current.error == null
+                  ? null
+                  : QuietNote(
+                      updatedAt: _current.updatedAt,
+                      onRetry: _loadCurrent,
+                    );
               if (current == null) {
-                return const EmptyView(
-                  icon: Icons.hourglass_empty,
-                  title: 'No readings yet',
-                  message:
-                      'The first reading appears shortly after the monitor joins WiFi.',
+                return Column(
+                  children: [
+                    ?note,
+                    const EmptyView(
+                      icon: Icons.hourglass_empty,
+                      title: 'No readings yet',
+                      message:
+                          'The first reading appears shortly after the monitor joins WiFi.',
+                    ),
+                  ],
                 );
               }
               final m = current.metrics;
@@ -203,6 +217,7 @@ class _OnlineTabState extends State<_OnlineTab>
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  ?note,
                   AqiTile(
                     aqi: hasData ? m.aqi : null,
                     caption: 'Last hour average',
@@ -265,32 +280,89 @@ class _OnlineTabState extends State<_OnlineTab>
             ],
             selected: {_timeline},
             onSelectionChanged: (selection) {
-              _timeline = selection.first;
+              setState(() => _timeline = selection.first);
               _loadHistory();
             },
           ),
           const SizedBox(height: 16),
-          FutureBuilder<List<HistoricalPoint>>(
-            future: _history,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return const SizedBox(height: 200, child: LoadingView());
+          ListenableBuilder(
+            listenable: _history,
+            builder: (context, _) {
+              if (_history.isFirstLoad) {
+                return const Skeleton(
+                  label: 'Loading AQI history',
+                  child: SkeletonBlock(height: 220, radius: 12),
+                );
               }
-              if (snapshot.hasError) {
+              if (!_history.hasData) {
                 return ErrorView(
-                  message: _message(snapshot.error),
+                  message: _message(_history.error),
                   onRetry: _loadHistory,
                 );
               }
               final slots = buildHistorySeries(
-                snapshot.data ?? const [],
-                _timeline,
+                _history.data ?? const [],
+                _shownTimeline,
               );
-              if (!slots.any((s) => s.aqi != null)) {
-                return const Text('No data for this period.');
-              }
-              return SizedBox(height: 220, child: _AqiChart(slots: slots));
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_history.error != null)
+                    QuietNote(
+                      message: _timeline == _shownTimeline
+                          ? null
+                          : "Couldn't load that range. "
+                                'Still showing ${_timelines[_shownTimeline]}.',
+                      updatedAt: _history.updatedAt,
+                      onRetry: _loadHistory,
+                    ),
+                  if (!slots.any((s) => s.aqi != null))
+                    const Text('No data for this period.')
+                  else
+                    SizedBox(height: 220, child: _AqiChart(slots: slots)),
+                ],
+              );
             },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// First-load placeholder shaped like the AQI tile and metric grid.
+class _CurrentSkeleton extends StatelessWidget {
+  const _CurrentSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Skeleton(
+      label: 'Loading the latest reading',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SkeletonBlock(height: 72, radius: 12),
+          SizedBox(height: 12),
+          SkeletonBlock(width: 200, height: 14),
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
+              SizedBox(width: 8),
+              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
+              SizedBox(width: 8),
+              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
+            ],
+          ),
+          SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
+              SizedBox(width: 8),
+              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
+              SizedBox(width: 8),
+              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
+            ],
           ),
         ],
       ),
@@ -309,11 +381,29 @@ class _MetricGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 2,
+    // Size tiles from their content rather than a fixed aspect ratio, so large
+    // accessibility text sizes don't overflow them.
+    final theme = Theme.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    double lineHeight(TextStyle? style) {
+      final size = style?.fontSize ?? 14;
+      return scaler.scale(size) * (style?.height ?? 1.2);
+    }
+
+    final extent =
+        8 + // Card margin
+        24 + // MetricTile padding
+        lineHeight(theme.textTheme.labelMedium) +
+        4 +
+        lineHeight(theme.textTheme.titleLarge) +
+        4; // rounding slack
+    return GridView(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisExtent: extent,
+      ),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 2.4,
       children: tiles,
     );
   }
@@ -328,6 +418,17 @@ class _AqiChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Axis labels scale with the system text size, so size the y-axis gutter
+    // from the widest label instead of a fixed width.
+    const axisStyle = TextStyle(fontSize: 10);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final leftAxisWidth =
+        (TextPainter(
+          text: const TextSpan(text: '000', style: axisStyle),
+          textDirection: Directionality.of(context),
+          textScaler: textScaler,
+        )..layout()).width +
+        8;
     final spots = [
       for (var i = 0; i < slots.length; i++)
         if (slots[i].aqi case final aqi?)
@@ -378,8 +479,20 @@ class _AqiChart extends StatelessWidget {
           titlesData: FlTitlesData(
             topTitles: const AxisTitles(),
             rightTitles: const AxisTitles(),
-            leftTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: true, reservedSize: 36),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: leftAxisWidth,
+                getTitlesWidget: (value, meta) => SideTitleWidget(
+                  meta: meta,
+                  child: Text(
+                    meta.formattedValue,
+                    style: axisStyle,
+                    maxLines: 1,
+                    softWrap: false,
+                  ),
+                ),
+              ),
             ),
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
@@ -392,9 +505,13 @@ class _AqiChart extends StatelessWidget {
                   }
                   return SideTitleWidget(
                     meta: meta,
+                    // Keep the first and last labels inside the chart.
+                    fitInside: SideTitleFitInsideData.fromTitleMeta(meta),
                     child: Text(
                       slots[index].axisLabel,
-                      style: const TextStyle(fontSize: 10),
+                      style: axisStyle,
+                      maxLines: 1,
+                      softWrap: false,
                     ),
                   );
                 },

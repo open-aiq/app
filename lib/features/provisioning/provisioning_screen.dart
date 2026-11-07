@@ -91,7 +91,9 @@ class _StepView extends StatelessWidget {
       ProvisioningStep.done => _DoneStep(controller: controller),
     };
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 200),
       child: KeyedSubtree(key: ValueKey(controller.step), child: body),
     );
   }

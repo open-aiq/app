@@ -25,6 +25,13 @@ class _LogsScreenState extends State<LogsScreen> {
   bool _loading = false;
   bool _loaded = false;
   String? _error;
+
+  /// Whether [_error] came from loading the next page rather than a refresh.
+  bool _pagingError = false;
+  DateTime? _updatedAt;
+
+  /// Ignores responses to requests that a newer one has replaced.
+  int _generation = 0;
   final _scroll = ScrollController();
 
   @override
@@ -49,11 +56,19 @@ class _LogsScreenState extends State<LogsScreen> {
     super.dispose();
   }
 
-  Future<void> _reload() async {
-    _entries.clear();
-    _nextBefore = null;
-    _loaded = false;
-    await _fetch();
+  /// Loads the newest page. Entries already on screen stay until it arrives.
+  Future<void> _reload() => _fetch();
+
+  /// A different filter is a different list, so start from a skeleton.
+  void _changeFilter(String? minLevel) {
+    setState(() {
+      _minLevel = minLevel;
+      _entries.clear();
+      _nextBefore = null;
+      _loaded = false;
+      _error = null;
+    });
+    _fetch();
   }
 
   Future<void> _loadMore() async {
@@ -62,26 +77,37 @@ class _LogsScreenState extends State<LogsScreen> {
   }
 
   Future<void> _fetch({int? before}) async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    final generation = ++_generation;
+    setState(() => _loading = true);
+    String? error;
     try {
       final page = await AppServices.of(
         context,
       ).api.logs(widget.device.id, minLevel: _minLevel, before: before);
+      if (!mounted || generation != _generation) return;
       setState(() {
+        if (before == null) _entries.clear();
         _entries.addAll(page.entries);
         _nextBefore = page.nextBefore;
         _loaded = true;
+        _error = null;
+        if (before == null) _updatedAt = DateTime.now();
       });
+      return;
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      error = e.message;
     } catch (_) {
-      setState(() => _error = 'Could not load logs. Check your connection.');
+      error = 'Could not load logs. Check your connection.';
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _generation) {
+        setState(() => _loading = false);
+      }
     }
+    if (!mounted || generation != _generation) return;
+    setState(() {
+      _error = error;
+      _pagingError = before != null;
+    });
   }
 
   @override
@@ -99,10 +125,8 @@ class _LogsScreenState extends State<LogsScreen> {
                     ButtonSegment(value: e.key, label: Text(e.value)),
                 ],
                 selected: {_minLevel},
-                onSelectionChanged: (selection) {
-                  setState(() => _minLevel = selection.first);
-                  _reload();
-                },
+                onSelectionChanged: (selection) =>
+                    _changeFilter(selection.first),
               ),
             ),
             Expanded(child: _body()),
@@ -113,19 +137,26 @@ class _LogsScreenState extends State<LogsScreen> {
   }
 
   Widget _body() {
-    if (!_loaded && _loading) {
-      return const LoadingView(message: 'Loading logs…');
+    if (!_loaded && _error == null) {
+      return const _LogsSkeleton();
     }
-    if (!_loaded && _error != null) {
+    if (!_loaded) {
       return ErrorView(message: _error!, onRetry: _reload);
     }
+    final refreshNote = _error != null && !_pagingError
+        ? Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: QuietNote(updatedAt: _updatedAt, onRetry: _reload),
+          )
+        : null;
     if (_entries.isEmpty) {
       return RefreshIndicator(
         onRefresh: _reload,
         child: ListView(
-          children: const [
-            SizedBox(height: 80),
-            EmptyView(
+          children: [
+            ?refreshNote,
+            const SizedBox(height: 80),
+            const EmptyView(
               icon: Icons.receipt_long,
               title: 'No log entries',
               message:
@@ -135,14 +166,25 @@ class _LogsScreenState extends State<LogsScreen> {
         ),
       );
     }
+    final lead = refreshNote == null ? 0 : 1;
     return RefreshIndicator(
       onRefresh: _reload,
       child: ListView.builder(
         controller: _scroll,
-        itemCount: _entries.length + 1,
+        itemCount: lead + _entries.length + 1,
         itemBuilder: (context, index) {
-          if (index == _entries.length) {
-            if (_error != null) return InlineError(_error);
+          if (index < lead) return refreshNote!;
+          final i = index - lead;
+          if (i == _entries.length) {
+            if (_error != null && _pagingError) {
+              return Padding(
+                padding: const EdgeInsets.all(12),
+                child: QuietNote(
+                  message: "Couldn't load older entries. Tap to try again.",
+                  onRetry: _loadMore,
+                ),
+              );
+            }
             return _nextBefore == null
                 ? const Padding(
                     padding: EdgeInsets.all(16),
@@ -153,8 +195,47 @@ class _LogsScreenState extends State<LogsScreen> {
                     child: Center(child: CircularProgressIndicator()),
                   );
           }
-          return _LogTile(entry: _entries[index]);
+          return _LogTile(entry: _entries[i]);
         },
+      ),
+    );
+  }
+}
+
+/// First-load placeholder shaped like a few log rows.
+class _LogsSkeleton extends StatelessWidget {
+  const _LogsSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      label: 'Loading logs',
+      child: ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          for (var i = 0; i < 6; i++)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBlock(width: 24, height: 24, radius: 12),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonBlock(height: 14),
+                        SizedBox(height: 8),
+                        SkeletonBlock(width: 120, height: 12),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

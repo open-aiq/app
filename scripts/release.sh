@@ -83,6 +83,11 @@ esac
 echo "==> Verifying release"
 make verify
 
+# The Settings screen shows AppConfig.appVersion; set it before building so
+# the APK carries the version it's released as.
+sed -i.bak "s/static const appVersion = '[^']*';/static const appVersion = '${build_name}';/" lib/config.dart
+rm -f lib/config.dart.bak
+
 echo "==> Building signed APK"
 "$FLUTTER" build apk --release \
 	--build-name="$build_name" \
@@ -105,8 +110,8 @@ cp build/app/outputs/flutter-apk/app-release.apk "$DIST/$apk"
 echo "==> Bumping version"
 sed -i.bak "s/^version:.*/version: ${build_name}+${build_number}/" pubspec.yaml
 rm -f pubspec.yaml.bak
-if ! git diff --quiet -- pubspec.yaml; then
-	git add pubspec.yaml
+if ! git diff --quiet -- pubspec.yaml lib/config.dart; then
+	git add pubspec.yaml lib/config.dart
 	git commit -m "Release $next"
 fi
 git tag -a "$next" -m "Release $next"
