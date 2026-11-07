@@ -19,7 +19,7 @@ class AqiTile extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: info.background,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           children: [
@@ -63,6 +63,73 @@ class AqiTile extends StatelessWidget {
   }
 }
 
+/// The compact AQI block on the home screen: the number and a short band
+/// name, nothing else.
+class AqiBlock extends StatelessWidget {
+  const AqiBlock({super.key, required this.aqi, this.height = 136});
+
+  final num? aqi;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final info = aqiInfo(aqi);
+    return Semantics(
+      label: 'Air quality index ${aqi?.round() ?? 'unknown'}, ${info.label}',
+      excludeSemantics: true,
+      child: Container(
+        constraints: BoxConstraints(minHeight: height),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: info.background,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  aqi?.round().toString() ?? '--',
+                  style: TextStyle(
+                    fontSize: 40,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    color: info.foreground,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'AQI',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: info.foreground,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              info.short,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: info.foreground,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// A labelled metric value, e.g. "PM2.5  12 µg/m³".
 class MetricTile extends StatelessWidget {
   const MetricTile({
@@ -80,8 +147,10 @@ class MetricTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card.filled(
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

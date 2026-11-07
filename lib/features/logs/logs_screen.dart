@@ -7,16 +7,17 @@ import '../../services.dart';
 import '../../widgets/states.dart';
 
 /// Important events uploaded by the monitor (errors, WiFi, OTA, boots).
-class LogsScreen extends StatefulWidget {
-  const LogsScreen({super.key, required this.device});
+/// Shown as the Logs tab of the monitor screen.
+class LogsView extends StatefulWidget {
+  const LogsView({super.key, required this.device});
 
   final Device device;
 
   @override
-  State<LogsScreen> createState() => _LogsScreenState();
+  State<LogsView> createState() => _LogsViewState();
 }
 
-class _LogsScreenState extends State<LogsScreen> {
+class _LogsViewState extends State<LogsView> {
   static const _filters = {null: 'All', 'warn': 'Warnings', 'error': 'Errors'};
 
   String? _minLevel;
@@ -113,7 +114,6 @@ class _LogsScreenState extends State<LogsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Device logs')),
       body: SafeArea(
         child: Column(
           children: [

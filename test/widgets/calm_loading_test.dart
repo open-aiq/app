@@ -121,7 +121,7 @@ void main() {
           home: AppServices(
             api: api,
             ble: ble,
-            child: DeviceListScreen(onSignOut: () async {}),
+            child: const DeviceListScreen(),
           ),
         ),
       ),

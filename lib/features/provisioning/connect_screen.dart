@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../ble/discovery.dart';
 import '../../ble/protocol.dart';
 import '../../services.dart';
+import '../../widgets/aiq_app_bar.dart';
 import '../../widgets/states.dart';
 
 /// Finds a monitor in pairing mode and opens a secure BLE session to it.
@@ -147,7 +148,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AiqAppBar(title: widget.title),
       body: SafeArea(
         child: _connectingTo != null
             ? LoadingView(

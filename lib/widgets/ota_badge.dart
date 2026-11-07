@@ -4,9 +4,17 @@ import '../api/models.dart';
 
 /// Small badge for a device's firmware-update state; hidden when up to date.
 class OtaBadge extends StatelessWidget {
-  const OtaBadge({super.key, required this.summary, this.onTap});
+  const OtaBadge({
+    super.key,
+    required this.summary,
+    this.onTap,
+    this.compact = false,
+  });
 
   final OtaSummary? summary;
+
+  /// Icon only, for tight rows; screen readers still hear the full label.
+  final bool compact;
   final VoidCallback? onTap;
 
   @override
@@ -55,16 +63,18 @@ class OtaBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: foreground),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: foreground,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          Icon(icon, size: compact ? 16 : 14, color: foreground),
+          if (!compact) ...[
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

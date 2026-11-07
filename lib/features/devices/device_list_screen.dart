@@ -5,22 +5,20 @@ import 'package:flutter/material.dart';
 import '../../api/api_client.dart';
 import '../../api/models.dart';
 import '../../services.dart';
+import '../../format.dart';
+import '../../widgets/aiq_app_bar.dart';
 import '../../widgets/keep_last.dart';
+import '../../widgets/monitor_illustration.dart';
 import '../../widgets/ota_badge.dart';
+import '../../widgets/soft_card.dart';
 import '../../widgets/states.dart';
 import '../../widgets/tiles.dart';
-import '../account/account.dart';
-import '../account/settings_screen.dart';
 import '../device_detail/device_detail_screen.dart';
-import '../firmware/firmware_screen.dart';
 import '../provisioning/provisioning_screen.dart';
 
 /// The signed-in home: the user's monitors with their latest AQI.
 class DeviceListScreen extends StatefulWidget {
-  const DeviceListScreen({super.key, required this.onSignOut, this.account});
-
-  final Future<void> Function() onSignOut;
-  final Account? account;
+  const DeviceListScreen({super.key});
 
   @override
   State<DeviceListScreen> createState() => _DeviceListScreenState();
@@ -62,206 +60,119 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
     if (mounted) await _load();
   }
 
-  Future<void> _open(Device device) async {
+  Future<void> _open(
+    Device device, [
+    DeviceTab tab = DeviceTab.overview,
+  ]) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => DeviceDetailScreen(device: device),
+        builder: (_) => DeviceDetailScreen(device: device, initialTab: tab),
       ),
     );
     if (mounted) await _load();
   }
 
-  Future<void> _signOut() async {
-    final ble = AppServices.of(context).ble;
-    if (await confirmDialog(
-      context,
-      title: 'Sign out?',
-      message: 'You can sign in again any time.',
-      confirmLabel: 'Sign out',
-    )) {
-      await ble.disconnect();
-      await widget.onSignOut();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My monitors'),
-        actions: [
-          _AccountMenu(
-            account: widget.account,
-            onSettings: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => SettingsScreen(account: widget.account),
-              ),
-            ),
-            onSignOut: _signOut,
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
+      appBar: const AiqAppBar(title: 'My monitors'),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addMonitor,
-        icon: const Icon(Icons.add),
+        icon: const MonitorGlyph(),
         label: const Text('Add monitor'),
       ),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: _devices,
-          builder: (context, _) {
-            if (_devices.isFirstLoad) {
-              return const _DeviceListSkeleton();
-            }
-            if (!_devices.hasData) {
-              final error = _devices.error;
-              return ErrorView(
-                message: error is ApiException
-                    ? error.message
-                    : 'Could not load your monitors. Check your connection.',
-                onRetry: _load,
-              );
-            }
-            final devices = _devices.data!;
-            final note = _devices.error == null
-                ? null
-                : QuietNote(updatedAt: _devices.updatedAt, onRetry: _load);
-            if (devices.isEmpty) {
-              return RefreshIndicator(
-                onRefresh: _load,
-                child: LayoutBuilder(
-                  builder: (context, constraints) => ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      ?note,
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight - 64,
-                        ),
-                        child: EmptyView(
-                          icon: Icons.sensors,
-                          title: 'No monitors yet',
-                          message:
-                              'Put your monitor in pairing mode and add it over Bluetooth.',
-                          action: FilledButton.icon(
-                            onPressed: _addMonitor,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add monitor'),
-                          ),
-                        ),
-                      ),
-                    ],
+          builder: (context, _) => SoftSwitcher(child: _content()),
+        ),
+      ),
+    );
+  }
+
+  /// The list, or the skeleton, error or empty state it fades in from.
+  Widget _content() {
+    if (_devices.isFirstLoad) {
+      return const KeyedSubtree(
+        key: ValueKey('skeleton'),
+        child: _DeviceListSkeleton(),
+      );
+    }
+    if (!_devices.hasData) {
+      final error = _devices.error;
+      return KeyedSubtree(
+        key: const ValueKey('error'),
+        child: ErrorView(
+          message: error is ApiException
+              ? error.message
+              : 'Could not load your monitors. Check your connection.',
+          onRetry: _load,
+        ),
+      );
+    }
+    final devices = _devices.data!;
+    final note = _devices.error == null
+        ? null
+        : QuietNote(updatedAt: _devices.updatedAt, onRetry: _load);
+    if (devices.isEmpty) {
+      return KeyedSubtree(
+        key: const ValueKey('empty'),
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: LayoutBuilder(
+            builder: (context, constraints) => ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                ?note,
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight - 64,
+                  ),
+                  child: EmptyView(
+                    illustration: const MonitorIllustration(),
+                    title: 'No monitors yet',
+                    message:
+                        'Hold both buttons on your monitor for 3 seconds, '
+                        'then add it here over Bluetooth.',
+                    action: FilledButton.icon(
+                      onPressed: _addMonitor,
+                      icon: const MonitorGlyph(),
+                      label: const Text('Add monitor'),
+                    ),
                   ),
                 ),
-              );
-            }
-            return RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-                children: [
-                  if (note != null) ...[note, const SizedBox(height: 8)],
-                  for (final (index, device) in devices.indexed) ...[
-                    if (index > 0) const SizedBox(height: 12),
-                    _DeviceCard(
-                      key: ValueKey(device.id),
-                      device: device,
-                      tick: _tick,
-                      onTap: () => _open(device),
-                      onBadgeTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => FirmwareScreen(device: device),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-/// The avatar in the app bar. It opens a menu with the profile, Settings and
-/// Sign out.
-class _AccountMenu extends StatelessWidget {
-  const _AccountMenu({
-    required this.account,
-    required this.onSettings,
-    required this.onSignOut,
-  });
-
-  final Account? account;
-  final VoidCallback onSettings;
-  final VoidCallback onSignOut;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return MenuAnchor(
-      alignmentOffset: const Offset(-180, 4),
-      menuChildren: [
-        if (account != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 240),
-              child: Row(
-                children: [
-                  AccountAvatar(account: account, radius: 18),
-                  const SizedBox(width: 12),
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          account!.name,
-                          style: theme.textTheme.titleSmall,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (account!.email != null &&
-                            account!.email != account!.name)
-                          Text(
-                            account!.email!,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
           ),
-        if (account != null) const Divider(height: 8),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.settings_outlined),
-          onPressed: onSettings,
-          child: const Text('Settings'),
         ),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.logout),
-          onPressed: onSignOut,
-          child: const Text('Sign out'),
+      );
+    }
+    return KeyedSubtree(
+      key: const ValueKey('list'),
+      child: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+          children: [
+            if (note != null) ...[note, const SizedBox(height: 8)],
+            for (final (index, device) in devices.indexed) ...[
+              if (index > 0) const SizedBox(height: 16),
+              _DeviceCard(
+                key: ValueKey(device.id),
+                device: device,
+                tick: _tick,
+                onTap: () => _open(device),
+                onBadgeTap: () => _open(device, DeviceTab.updates),
+              ),
+            ],
+          ],
         ),
-      ],
-      builder: (context, controller, _) => IconButton(
-        tooltip: 'Account and settings',
-        onPressed: () =>
-            controller.isOpen ? controller.close() : controller.open(),
-        icon: AccountAvatar(account: account),
       ),
     );
   }
 }
 
-/// First-load placeholder shaped like a couple of monitor cards.
+/// First-load placeholder: the same cards, drawn as soft shapes.
 class _DeviceListSkeleton extends StatelessWidget {
   const _DeviceListSkeleton();
 
@@ -271,14 +182,22 @@ class _DeviceListSkeleton extends StatelessWidget {
       label: 'Loading your monitors',
       child: ListView(
         physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
           for (var i = 0; i < 3; i++) ...[
-            if (i > 0) const SizedBox(height: 12),
-            const Card.outlined(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: _CardBodySkeleton(withTitle: true),
+            if (i > 0) const SizedBox(height: 16),
+            const SoftCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _CardHeader(
+                    icon: SkeletonShape(radius: 10, child: Icon(Icons.home)),
+                    name: SkeletonShape(child: _CardName('Living room')),
+                    status: SkeletonShape(child: _StatusLine.placeholder()),
+                  ),
+                  SizedBox(height: _cardGap),
+                  _ReadingRow.placeholder(),
+                ],
               ),
             ),
           ],
@@ -288,23 +207,104 @@ class _DeviceListSkeleton extends StatelessWidget {
   }
 }
 
-class _CardBodySkeleton extends StatelessWidget {
-  const _CardBodySkeleton({this.withTitle = false});
+/// Space between a card's header and its readings.
+const _cardGap = 18.0;
 
-  final bool withTitle;
+/// Icon, name, then status and update badge on the right.
+class _CardHeader extends StatelessWidget {
+  const _CardHeader({
+    required this.icon,
+    required this.name,
+    required this.status,
+    this.badge,
+  });
+
+  final Widget icon;
+  final Widget name;
+  final Widget status;
+  final Widget? badge;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        if (withTitle) ...[
-          const SkeletonBlock(width: 140, height: 18),
-          const SizedBox(height: 16),
-        ],
-        const SkeletonBlock(height: 64, radius: 12),
-        const SizedBox(height: 12),
-        const SkeletonBlock(width: 180, height: 14),
+        icon,
+        const SizedBox(width: 10),
+        Expanded(
+          child: Align(alignment: Alignment.centerLeft, child: name),
+        ),
+        const SizedBox(width: 12),
+        status,
+        if (badge != null) ...[const SizedBox(width: 8), badge!],
+      ],
+    );
+  }
+}
+
+class _CardName extends StatelessWidget {
+  const _CardName(this.name);
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      name,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(
+        context,
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+    );
+  }
+}
+
+/// The AQI block with temperature and PM2.5 beside it.
+class _ReadingRow extends StatelessWidget {
+  const _ReadingRow({super.key, required this.reading}) : loading = false;
+
+  const _ReadingRow.placeholder() : reading = null, loading = true;
+
+  final CurrentReading? reading;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = reading;
+    final hasData = current != null && current.sampleCount > 0;
+    final m = current?.metrics;
+    final aqi = AqiBlock(aqi: hasData ? m!.aqi : null);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          flex: 5,
+          child: loading ? SkeletonShape(radius: 20, child: aqi) : aqi,
+        ),
+        const SizedBox(width: 18),
+        Expanded(
+          flex: 4,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _Stat(
+                icon: Icons.thermostat_outlined,
+                label: 'Temperature',
+                value: hasData ? formatNumber(m!.temperature, digits: 1) : '--',
+                unit: '°C',
+                loading: loading,
+              ),
+              const SizedBox(height: 22),
+              _Stat(
+                icon: Icons.grain,
+                label: 'PM2.5',
+                value: hasData ? formatNumber(m!.pm25, digits: 1) : '--',
+                unit: 'µg/m³',
+                loading: loading,
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -369,110 +369,190 @@ class _DeviceCardState extends State<_DeviceCard> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final device = widget.device;
-    return Card.outlined(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: widget.onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+    return SoftCard(
+      onTap: widget.onTap,
+      child: ListenableBuilder(
+        listenable: _current,
+        builder: (context, _) {
+          final loading = _current.isFirstLoad;
+          // A failed first load and "no readings yet" both show the same
+          // layout with empty values, so the card keeps its size.
+          final reading = _current.data;
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    device.isOutdoor ? Icons.park : Icons.home,
-                    size: 20,
-                    semanticLabel: device.isOutdoor ? 'Outdoor' : 'Indoor',
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      device.name,
-                      style: theme.textTheme.titleMedium,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  OtaBadge(summary: device.ota, onTap: widget.onBadgeTap),
-                ],
+              _CardHeader(
+                icon: Icon(
+                  device.isOutdoor ? Icons.park_outlined : Icons.home_outlined,
+                  size: 22,
+                  color: Theme.of(context).colorScheme.secondary,
+                  semanticLabel: device.isOutdoor ? 'Outdoor' : 'Indoor',
+                ),
+                name: _CardName(device.name),
+                status: SoftSwitcher(
+                  child: loading
+                      ? const Skeleton(
+                          key: ValueKey('loading'),
+                          child: SkeletonShape(
+                            child: _StatusLine.placeholder(),
+                          ),
+                        )
+                      : _StatusLine(
+                          key: const ValueKey('status'),
+                          online: reading?.online ?? false,
+                          seen: reading?.lastSeen,
+                          unavailable: !_current.hasData,
+                        ),
+                ),
+                badge: OtaBadge(
+                  summary: device.ota,
+                  onTap: widget.onBadgeTap,
+                  compact: true,
+                ),
               ),
-              const SizedBox(height: 12),
-              ListenableBuilder(
-                listenable: _current,
-                builder: (context, _) {
-                  if (_current.isFirstLoad) {
-                    return const Skeleton(
-                      label: 'Loading the latest reading',
-                      child: _CardBodySkeleton(),
-                    );
-                  }
-                  if (!_current.hasData) {
-                    return Text(
-                      'Latest reading unavailable',
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant,
+              const SizedBox(height: _cardGap),
+              SoftSwitcher(
+                child: loading
+                    ? const Skeleton(
+                        key: ValueKey('loading'),
+                        label: 'Loading the latest reading',
+                        child: _ReadingRow.placeholder(),
+                      )
+                    : _ReadingRow(
+                        key: const ValueKey('reading'),
+                        reading: reading,
                       ),
-                    );
-                  }
-                  final current = _current.data;
-                  if (current == null) return const Text('No readings yet');
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AqiTile(
-                        aqi: current.sampleCount > 0
-                            ? current.metrics.aqi
-                            : null,
-                        caption: 'Last hour average',
-                      ),
-                      const SizedBox(height: 8),
-                      _StatusLine(current: current),
-                    ],
-                  );
-                },
               ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
 }
 
-class _StatusLine extends StatelessWidget {
-  const _StatusLine({required this.current});
+/// One reading beside the AQI block: an icon as tall as the two lines of
+/// text next to it, centred against them.
+class _Stat extends StatelessWidget {
+  const _Stat({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.unit,
+    this.loading = false,
+  });
 
-  final CurrentReading current;
+  final IconData icon;
+  final String label;
+  final String value;
+  final String unit;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = current.online ? Colors.green.shade700 : scheme.outline;
-    return Row(
-      children: [
-        Icon(Icons.circle, size: 10, color: color),
-        const SizedBox(width: 6),
-        Text(current.online ? 'Online' : 'Offline'),
-        if (current.lastSeen != null) ...[
-          const Text(' · '),
-          Flexible(
-            child: Text(
-              'last seen ${relativeTime(current.lastSeen!)}',
-              overflow: TextOverflow.ellipsis,
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final valueStyle = theme.textTheme.titleMedium?.copyWith(
+      fontWeight: FontWeight.w600,
+    );
+    final labelStyle = theme.textTheme.labelSmall?.copyWith(color: muted);
+    final scaler = MediaQuery.textScalerOf(context);
+    double lineHeight(TextStyle? style) =>
+        scaler.scale(style?.fontSize ?? 14) * (style?.height ?? 1.2);
+    final iconSize = lineHeight(valueStyle) + lineHeight(labelStyle);
+
+    Widget shape(Widget child, [double radius = 6]) =>
+        loading ? SkeletonShape(radius: radius, child: child) : child;
+
+    return Semantics(
+      label: loading ? null : '$label $value $unit',
+      excludeSemantics: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          shape(
+            Icon(icon, size: iconSize, color: theme.colorScheme.secondary),
+            iconSize / 2,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                shape(
+                  Text.rich(
+                    TextSpan(
+                      text: loading ? '00.0' : value,
+                      style: valueStyle,
+                      children: [
+                        TextSpan(
+                          text: ' $unit',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                  ),
+                ),
+                shape(Text(label, maxLines: 1, style: labelStyle)),
+              ],
             ),
           ),
         ],
-      ],
+      ),
     );
   }
 }
 
-String relativeTime(DateTime time) {
-  final diff = DateTime.now().difference(time);
-  if (diff.inMinutes < 1) return 'just now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-  if (diff.inHours < 24) return '${diff.inHours} h ago';
-  return '${diff.inDays} d ago';
+/// Online or offline as an icon, then how long ago the monitor was seen.
+class _StatusLine extends StatelessWidget {
+  const _StatusLine({
+    super.key,
+    required this.online,
+    required this.seen,
+    this.unavailable = false,
+  });
+
+  const _StatusLine.placeholder()
+    : online = true,
+      seen = null,
+      unavailable = false;
+
+  final bool online;
+  final DateTime? seen;
+
+  /// The reading couldn't be loaded at all.
+  final bool unavailable;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final text = unavailable
+        ? 'Unavailable'
+        : seen == null
+        ? '--m ago'
+        : shortAgo(seen!);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          online ? Icons.wifi : Icons.wifi_off,
+          size: 16,
+          color: online ? scheme.secondary : scheme.outline,
+          semanticLabel: online ? 'Online' : 'Offline',
+        ),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
 }

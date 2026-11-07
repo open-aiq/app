@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../config.dart';
+import '../../widgets/aiq_app_bar.dart';
 import 'account.dart';
 
 /// App-wide settings: who's signed in, how the app looks, and what version
 /// is running. Per-monitor settings live on each monitor's own screen.
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.account});
-
-  final Account? account;
+  const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final account = AccountScope.maybeOf(context)?.account;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: const AiqAppBar(title: 'Settings', showSettingsItem: false),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),

@@ -12,18 +12,29 @@ import '../provisioning/provisioning_screen.dart' show currentPosition;
 /// monitor itself and need a Bluetooth connection.
 ///
 /// Pops the updated [Device], or [deleted] after deletion.
-class DeviceSettingsScreen extends StatefulWidget {
-  const DeviceSettingsScreen({super.key, required this.device});
-
-  static const deleted = 'deleted';
+/// Name, sharing, WiFi, location and maintenance for one monitor. Shown as
+/// the Settings tab of the monitor screen.
+class DeviceSettingsView extends StatefulWidget {
+  const DeviceSettingsView({
+    super.key,
+    required this.device,
+    required this.onChanged,
+    required this.onDeleted,
+  });
 
   final Device device;
 
+  /// Called with the saved device after a successful save.
+  final ValueChanged<Device> onChanged;
+
+  /// Called once the monitor has been removed from the account.
+  final VoidCallback onDeleted;
+
   @override
-  State<DeviceSettingsScreen> createState() => _DeviceSettingsScreenState();
+  State<DeviceSettingsView> createState() => _DeviceSettingsViewState();
 }
 
-class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
+class _DeviceSettingsViewState extends State<DeviceSettingsView> {
   late final _name = TextEditingController(text: widget.device.name);
   late bool _outdoor = widget.device.isOutdoor;
   late bool _public = widget.device.isPublic;
@@ -70,6 +81,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
         isLocationPublic: _public && _locationPublic,
       );
       setState(() => _device = updated);
+      widget.onChanged(updated);
       _snack('Settings saved');
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -235,7 +247,7 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
         await services.ble.disconnect();
       }
       await services.api.deleteDevice(_device.id);
-      if (mounted) Navigator.of(context).pop(DeviceSettingsScreen.deleted);
+      if (mounted) widget.onDeleted();
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     }
@@ -245,140 +257,128 @@ class _DeviceSettingsScreenState extends State<DeviceSettingsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final ble = AppServices.of(context).ble;
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.of(context).pop(_device);
-      },
-      child: Scaffold(
-        appBar: AppBar(title: const Text('Settings')),
-        body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text('General', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _name,
-                maxLength: 100,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
-                  border: OutlineInputBorder(),
+    return Scaffold(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text('General', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _name,
+              maxLength: 100,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            SwitchListTile(
+              title: const Text('Installed outdoors'),
+              value: _outdoor,
+              onChanged: (value) => setState(() => _outdoor = value),
+            ),
+            SwitchListTile(
+              title: const Text('Share data publicly'),
+              subtitle: const Text('Readings appear on the public map'),
+              value: _public,
+              onChanged: (value) => setState(() => _public = value),
+            ),
+            SwitchListTile(
+              title: const Text('Share exact location'),
+              subtitle: Text(
+                _public ? 'Shown on the public map' : 'Requires public sharing',
+              ),
+              value: _public && _locationPublic,
+              onChanged: _public
+                  ? (value) => setState(() => _locationPublic = value)
+                  : null,
+            ),
+            InlineError(_error),
+            FilledButton(
+              onPressed: _saving || !_dirty ? null : _save,
+              child: Text(_saving ? 'Saving…' : 'Save changes'),
+            ),
+            const Divider(height: 40),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'On the monitor',
+                    style: theme.textTheme.titleMedium,
+                  ),
                 ),
-                onChanged: (_) => setState(() {}),
-              ),
-              SwitchListTile(
-                title: const Text('Installed outdoors'),
-                value: _outdoor,
-                onChanged: (value) => setState(() => _outdoor = value),
-              ),
-              SwitchListTile(
-                title: const Text('Share data publicly'),
-                subtitle: const Text('Readings appear on the public map'),
-                value: _public,
-                onChanged: (value) => setState(() => _public = value),
-              ),
-              SwitchListTile(
-                title: const Text('Share exact location'),
-                subtitle: Text(
-                  _public
-                      ? 'Shown on the public map'
-                      : 'Requires public sharing',
-                ),
-                value: _public && _locationPublic,
-                onChanged: _public
-                    ? (value) => setState(() => _locationPublic = value)
-                    : null,
-              ),
-              InlineError(_error),
-              FilledButton(
-                onPressed: _saving || !_dirty ? null : _save,
-                child: Text(_saving ? 'Saving…' : 'Save changes'),
-              ),
-              const Divider(height: 40),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'On the monitor',
-                      style: theme.textTheme.titleMedium,
+                ListenableBuilder(
+                  listenable: ble,
+                  builder: (context, _) => Chip(
+                    avatar: Icon(
+                      ble.isConnectedTo(_device.deviceId)
+                          ? Icons.bluetooth_connected
+                          : Icons.bluetooth_disabled,
+                      size: 16,
+                    ),
+                    label: Text(
+                      ble.isConnectedTo(_device.deviceId)
+                          ? 'Connected'
+                          : 'Not connected',
                     ),
                   ),
-                  ListenableBuilder(
-                    listenable: ble,
-                    builder: (context, _) => Chip(
-                      avatar: Icon(
-                        ble.isConnectedTo(_device.deviceId)
-                            ? Icons.bluetooth_connected
-                            : Icons.bluetooth_disabled,
-                        size: 16,
-                      ),
-                      label: Text(
-                        ble.isConnectedTo(_device.deviceId)
-                            ? 'Connected'
-                            : 'Not connected',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const Text(
-                'These settings are stored on the monitor and need a Bluetooth connection (pairing mode).',
-              ),
-              if (_bleBusy != null) ...[
-                const SizedBox(height: 8),
-                LinearProgressIndicator(semanticsLabel: _bleBusy),
+                ),
               ],
-              InlineError(_bleError),
-              ListTile(
-                leading: const Icon(Icons.wifi),
-                title: const Text('Change WiFi network'),
-                onTap: _bleBusy == null ? _changeWifi : null,
-              ),
-              ListTile(
-                leading: const Icon(Icons.my_location),
-                title: const Text('Update location from this phone'),
-                onTap: _bleBusy == null ? _updateLocation : null,
-              ),
-              ListTile(
-                leading: const Icon(Icons.key),
-                title: const Text('Rotate device key'),
-                onTap: _bleBusy == null ? _rotateKey : null,
-              ),
-              ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('Monitor details'),
-                onTap: _bleBusy == null ? _showInfo : null,
-              ),
-              ListTile(
-                leading: Icon(
-                  Icons.restart_alt,
-                  color: theme.colorScheme.error,
-                ),
-                title: Text(
-                  'Factory reset monitor',
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
-                onTap: _bleBusy == null ? _factoryReset : null,
-              ),
-              const Divider(height: 40),
-              Text(
-                'Danger zone',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
+            ),
+            const Text(
+              'These settings are stored on the monitor and need a Bluetooth connection (pairing mode).',
+            ),
+            if (_bleBusy != null) ...[
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: theme.colorScheme.error,
-                ),
-                onPressed: _delete,
-                icon: const Icon(Icons.delete_forever),
-                label: const Text('Delete device'),
-              ),
+              LinearProgressIndicator(semanticsLabel: _bleBusy),
             ],
-          ),
+            InlineError(_bleError),
+            ListTile(
+              leading: const Icon(Icons.wifi),
+              title: const Text('Change WiFi network'),
+              onTap: _bleBusy == null ? _changeWifi : null,
+            ),
+            ListTile(
+              leading: const Icon(Icons.my_location),
+              title: const Text('Update location from this phone'),
+              onTap: _bleBusy == null ? _updateLocation : null,
+            ),
+            ListTile(
+              leading: const Icon(Icons.key),
+              title: const Text('Rotate device key'),
+              onTap: _bleBusy == null ? _rotateKey : null,
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Monitor details'),
+              onTap: _bleBusy == null ? _showInfo : null,
+            ),
+            ListTile(
+              leading: Icon(Icons.restart_alt, color: theme.colorScheme.error),
+              title: Text(
+                'Factory reset monitor',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+              onTap: _bleBusy == null ? _factoryReset : null,
+            ),
+            const Divider(height: 40),
+            Text(
+              'Danger zone',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: theme.colorScheme.error,
+              ),
+              onPressed: _delete,
+              icon: const Icon(Icons.delete_forever),
+              label: const Text('Delete device'),
+            ),
+          ],
         ),
       ),
     );

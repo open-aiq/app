@@ -9,21 +9,33 @@ import '../../api/api_client.dart';
 import '../../api/models.dart';
 import '../../ble/protocol.dart';
 import '../../services.dart';
+import '../../widgets/aiq_app_bar.dart';
 import '../../widgets/keep_last.dart';
+import '../../widgets/monitor_illustration.dart';
 import '../../widgets/ota_badge.dart';
 import '../../widgets/states.dart';
 import '../../widgets/tiles.dart';
-import '../devices/device_list_screen.dart' show relativeTime;
-import '../firmware/firmware_screen.dart';
-import '../logs/logs_screen.dart';
+import '../../format.dart';
+import '../firmware/firmware_screen.dart' show FirmwareView;
+import '../logs/logs_screen.dart' show LogsView;
 import '../provisioning/connect_screen.dart';
-import '../settings/device_settings_screen.dart';
+import '../settings/device_settings_screen.dart' show DeviceSettingsView;
 import 'history_series.dart';
 
+/// The sections of a monitor, in bottom-bar order.
+enum DeviceTab { overview, live, logs, updates, settings }
+
+/// One monitor. A bottom navigation bar switches between its sections; tabs
+/// never change on a swipe, so the history chart keeps horizontal drags.
 class DeviceDetailScreen extends StatefulWidget {
-  const DeviceDetailScreen({super.key, required this.device});
+  const DeviceDetailScreen({
+    super.key,
+    required this.device,
+    this.initialTab = DeviceTab.overview,
+  });
 
   final Device device;
+  final DeviceTab initialTab;
 
   @override
   State<DeviceDetailScreen> createState() => _DeviceDetailScreenState();
@@ -31,77 +43,156 @@ class DeviceDetailScreen extends StatefulWidget {
 
 class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   late Device _device = widget.device;
+  late DeviceTab _tab = widget.initialTab;
 
-  Future<void> _openSettings() async {
-    final result = await Navigator.of(context).push<Object?>(
-      MaterialPageRoute(builder: (_) => DeviceSettingsScreen(device: _device)),
-    );
-    if (!mounted) return;
-    if (result == DeviceSettingsScreen.deleted) {
-      Navigator.of(context).pop();
-    } else if (result is Device) {
-      setState(() => _device = result);
+  /// Tabs are built the first time they're opened, then kept, so switching
+  /// back doesn't reload or lose your place.
+  late final Set<DeviceTab> _opened = {widget.initialTab};
+
+  /// The latest reading, shared by the top bar's status and the Overview tab.
+  final _current = KeepLast<CurrentReading?>();
+  Timer? _refresh;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_refresh == null) {
+      _loadCurrent();
+      // Devices upload every 10 minutes; refreshing every minute is plenty.
+      _refresh = Timer.periodic(
+        const Duration(minutes: 1),
+        (_) => _loadCurrent(),
+      );
     }
   }
 
   @override
+  void dispose() {
+    _refresh?.cancel();
+    _current.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCurrent() {
+    final api = AppServices.of(context).api;
+    return _current.load(() async {
+      try {
+        return await api.current(_device.id);
+      } on ApiException catch (e) {
+        if (e.isNoReadings) return null;
+        rethrow;
+      }
+    });
+  }
+
+  String? get _status {
+    final current = _current.data;
+    if (current == null) return null;
+    final seen = current.lastSeen;
+    final state = current.online ? 'Online' : 'Offline';
+    return seen == null ? state : '$state · ${shortAgo(seen)}';
+  }
+
+  void _select(DeviceTab tab) => setState(() {
+    _tab = tab;
+    _opened.add(tab);
+  });
+
+  Widget _build(DeviceTab tab) => switch (tab) {
+    DeviceTab.overview => _OnlineTab(
+      device: _device,
+      current: _current,
+      reloadCurrent: _loadCurrent,
+    ),
+    DeviceTab.live => _LiveTab(device: _device),
+    DeviceTab.logs => LogsView(device: _device),
+    DeviceTab.updates => FirmwareView(device: _device),
+    DeviceTab.settings => DeviceSettingsView(
+      device: _device,
+      onChanged: (device) => setState(() => _device = device),
+      onDeleted: () => Navigator.of(context).pop(),
+    ),
+  };
+
+  @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(_device.name, overflow: TextOverflow.ellipsis),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Center(
-                child: OtaBadge(
-                  summary: _device.ota,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => FirmwareScreen(device: _device),
-                    ),
+    final ota = _device.ota;
+    return Scaffold(
+      appBar: PreferredSize(
+        preferredSize: const AiqAppBar(title: '').preferredSize,
+        child: ListenableBuilder(
+          listenable: _current,
+          builder: (context, _) => AiqAppBar(
+            title: _device.name,
+            subtitle: _status,
+            chip: _tab == DeviceTab.updates
+                ? null
+                : OtaBadge(
+                    summary: ota,
+                    onTap: () => _select(DeviceTab.updates),
                   ),
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Device logs',
-              icon: const Icon(Icons.receipt_long),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => LogsScreen(device: _device),
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Settings',
-              icon: const Icon(Icons.settings),
-              onPressed: _openSettings,
-            ),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(icon: Icon(Icons.cloud_outlined), text: 'Online'),
-              Tab(icon: Icon(Icons.bluetooth), text: 'Live'),
-            ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _OnlineTab(device: _device),
-            _LiveTab(device: _device),
-          ],
-        ),
+      ),
+      body: IndexedStack(
+        index: _tab.index,
+        children: [
+          for (final tab in DeviceTab.values)
+            _opened.contains(tab)
+                ? TickerMode(enabled: tab == _tab, child: _build(tab))
+                : const SizedBox.shrink(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab.index,
+        onDestinationSelected: (index) => _select(DeviceTab.values[index]),
+        destinations: [
+          const NavigationDestination(
+            icon: Icon(Icons.insights_outlined),
+            selectedIcon: Icon(Icons.insights),
+            label: 'Overview',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.bluetooth),
+            selectedIcon: Icon(Icons.bluetooth_connected),
+            label: 'Live',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'Logs',
+          ),
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: ota?.needsAttention ?? false,
+              child: const Icon(Icons.system_update_outlined),
+            ),
+            selectedIcon: const Icon(Icons.system_update),
+            label: 'Updates',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.tune_outlined),
+            selectedIcon: Icon(Icons.tune),
+            label: 'Settings',
+          ),
+        ],
       ),
     );
   }
 }
 
 class _OnlineTab extends StatefulWidget {
-  const _OnlineTab({required this.device});
+  const _OnlineTab({
+    required this.device,
+    required this.current,
+    required this.reloadCurrent,
+  });
 
   final Device device;
+
+  /// Owned by the monitor screen, which also shows it in the top bar.
+  final KeepLast<CurrentReading?> current;
+  final Future<void> Function() reloadCurrent;
 
   @override
   State<_OnlineTab> createState() => _OnlineTabState();
@@ -116,14 +207,15 @@ class _OnlineTabState extends State<_OnlineTab>
     'yearly': '12 mo',
   };
 
-  final _current = KeepLast<CurrentReading?>();
-  final _history = KeepLast<List<HistoricalPoint>>();
-  String _timeline = 'daily';
+  late final _current = widget.current;
 
-  /// The range the chart on screen belongs to; it lags [_timeline] while a
-  /// new range loads, so the old chart stays put until the new one arrives.
-  String _shownTimeline = 'daily';
-  Timer? _refresh;
+  /// Every range at once, so picking 24 h, 7 d, 30 d or 12 mo only switches
+  /// what's shown. Refreshed together on each poll.
+  final _history = KeepLast<Map<String, List<HistoricalPoint>>>();
+  String _timeline = 'daily';
+  Timer? _poll;
+
+  bool _started = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -131,45 +223,79 @@ class _OnlineTabState extends State<_OnlineTab>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_refresh == null) {
-      _load();
-      // Devices upload every 10 minutes; refreshing every minute is plenty.
-      _refresh = Timer.periodic(
-        const Duration(minutes: 1),
-        (_) => _loadCurrent(),
-      );
+    if (!_started) {
+      _started = true;
+      _loadHistory();
+      _poll = Timer.periodic(const Duration(minutes: 1), (_) => _loadHistory());
     }
   }
 
   @override
   void dispose() {
-    _refresh?.cancel();
-    _current.dispose();
+    _poll?.cancel();
     _history.dispose();
     super.dispose();
   }
 
   Future<void> _load() => Future.wait([_loadCurrent(), _loadHistory()]);
 
-  Future<void> _loadCurrent() {
+  Future<void> _loadCurrent() => widget.reloadCurrent();
+
+  Future<void> _loadHistory() {
     final api = AppServices.of(context).api;
-    return _current.load(() async {
-      try {
-        return await api.current(widget.device.id);
-      } on ApiException catch (e) {
-        if (e.isNoReadings) return null;
-        rethrow;
-      }
+    final id = widget.device.id;
+    return _history.load(() async {
+      final ranges = _timelines.keys.toList();
+      final results = await Future.wait(
+        ranges.map((range) => api.historical(id, range)),
+      );
+      return {for (var i = 0; i < ranges.length; i++) ranges[i]: results[i]};
     });
   }
 
-  Future<void> _loadHistory() async {
-    final api = AppServices.of(context).api;
-    final timeline = _timeline;
-    await _history.load(() => api.historical(widget.device.id, timeline));
-    if (mounted && _history.error == null && timeline == _timeline) {
-      setState(() => _shownTimeline = timeline);
+  /// The chart for the selected range, or the skeleton it fades in from.
+  Widget _historyBody() {
+    if (_history.isFirstLoad) {
+      return const Skeleton(
+        key: ValueKey('loading'),
+        label: 'Loading AQI history',
+        child: SkeletonBlock(height: 220, radius: 12),
+      );
     }
+    if (!_history.hasData) {
+      return KeyedSubtree(
+        key: const ValueKey('error'),
+        child: ErrorView(
+          message: _message(_history.error),
+          onRetry: _loadHistory,
+        ),
+      );
+    }
+    final slots = buildHistorySeries(
+      _history.data![_timeline] ?? const [],
+      _timeline,
+    );
+    return Column(
+      key: const ValueKey('history'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_history.error != null)
+          QuietNote(updatedAt: _history.updatedAt, onRetry: _loadHistory),
+        SizedBox(
+          height: 220,
+          // Each range fades into the next; a refresh of the same range
+          // animates inside the chart instead.
+          child: SoftSwitcher(
+            child: slots.any((s) => s.aqi != null)
+                ? _AqiChart(key: ValueKey(_timeline), slots: slots)
+                : Center(
+                    key: ValueKey('empty-$_timeline'),
+                    child: const Text('No data for this period.'),
+                  ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -182,93 +308,105 @@ class _OnlineTabState extends State<_OnlineTab>
         children: [
           ListenableBuilder(
             listenable: _current,
-            builder: (context, _) {
-              if (_current.isFirstLoad) {
-                return const _CurrentSkeleton();
-              }
-              if (!_current.hasData) {
-                return ErrorView(
-                  message: _message(_current.error),
-                  onRetry: _loadCurrent,
-                );
-              }
-              final current = _current.data;
-              final note = _current.error == null
-                  ? null
-                  : QuietNote(
-                      updatedAt: _current.updatedAt,
+            builder: (context, _) => SoftSwitcher(
+              child: Builder(
+                key: ValueKey(
+                  _current.isFirstLoad
+                      ? 'loading'
+                      : _current.hasData
+                      ? 'reading'
+                      : 'error',
+                ),
+                builder: (context) {
+                  if (_current.isFirstLoad) {
+                    return const _CurrentSkeleton();
+                  }
+                  if (!_current.hasData) {
+                    return ErrorView(
+                      message: _message(_current.error),
                       onRetry: _loadCurrent,
                     );
-              if (current == null) {
-                return Column(
-                  children: [
-                    ?note,
-                    const EmptyView(
-                      icon: Icons.hourglass_empty,
-                      title: 'No readings yet',
-                      message:
-                          'The first reading appears shortly after the monitor joins WiFi.',
-                    ),
-                  ],
-                );
-              }
-              final m = current.metrics;
-              final hasData = current.sampleCount > 0;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ?note,
-                  AqiTile(
-                    aqi: hasData ? m.aqi : null,
-                    caption: 'Last hour average',
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${current.online ? 'Online' : 'Offline'}'
-                    '${current.lastSeen == null ? '' : ' · last seen ${relativeTime(current.lastSeen!)}'}',
-                  ),
-                  const SizedBox(height: 8),
-                  _MetricGrid(
-                    tiles: [
-                      MetricTile(
-                        label: 'PM2.5',
-                        value: hasData ? formatNumber(m.pm25, digits: 1) : '--',
-                        unit: 'µg/m³',
+                  }
+                  final current = _current.data;
+                  final note = _current.error == null
+                      ? null
+                      : QuietNote(
+                          updatedAt: _current.updatedAt,
+                          onRetry: _loadCurrent,
+                        );
+                  if (current == null) {
+                    return Column(
+                      children: [
+                        ?note,
+                        const EmptyView(
+                          illustration: MonitorIllustration(size: 110),
+                          title: 'No readings yet',
+                          message:
+                              'The first reading appears shortly after the monitor joins WiFi.',
+                        ),
+                      ],
+                    );
+                  }
+                  final m = current.metrics;
+                  final hasData = current.sampleCount > 0;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ?note,
+                      AqiTile(
+                        aqi: hasData ? m.aqi : null,
+                        caption: 'Last hour average',
                       ),
-                      MetricTile(
-                        label: 'PM10',
-                        value: hasData ? formatNumber(m.pm10, digits: 1) : '--',
-                        unit: 'µg/m³',
-                      ),
-                      MetricTile(
-                        label: 'PM1',
-                        value: hasData ? formatNumber(m.pm1, digits: 1) : '--',
-                        unit: 'µg/m³',
-                      ),
-                      MetricTile(
-                        label: 'Temperature',
-                        value: hasData
-                            ? formatNumber(m.temperature, digits: 1)
-                            : '--',
-                        unit: '°C',
-                      ),
-                      MetricTile(
-                        label: 'Humidity',
-                        value: hasData ? formatNumber(m.humidity) : '--',
-                        unit: '%',
-                      ),
-                      MetricTile(
-                        label: 'Feels like',
-                        value: hasData
-                            ? formatNumber(m.heatIndex, digits: 1)
-                            : '--',
-                        unit: '°C',
+                      const SizedBox(height: 12),
+                      _MetricGrid(
+                        tiles: [
+                          MetricTile(
+                            label: 'PM2.5',
+                            value: hasData
+                                ? formatNumber(m.pm25, digits: 1)
+                                : '--',
+                            unit: 'µg/m³',
+                          ),
+                          MetricTile(
+                            label: 'PM10',
+                            value: hasData
+                                ? formatNumber(m.pm10, digits: 1)
+                                : '--',
+                            unit: 'µg/m³',
+                          ),
+                          MetricTile(
+                            label: 'PM1',
+                            value: hasData
+                                ? formatNumber(m.pm1, digits: 1)
+                                : '--',
+                            unit: 'µg/m³',
+                          ),
+                          MetricTile(
+                            label: 'Temperature',
+                            value: hasData
+                                ? formatNumber(m.temperature, digits: 1)
+                                : '--',
+                            unit: '°C',
+                          ),
+                          MetricTile(
+                            label: 'Humidity',
+                            value: hasData ? formatNumber(m.humidity) : '--',
+                            unit: '%',
+                          ),
+                          MetricTile(
+                            label: 'Feels like',
+                            value: hasData
+                                ? formatNumber(m.heatIndex, digits: 1)
+                                : '--',
+                            unit: '°C',
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                ],
-              );
-            },
+                  );
+                },
+              ),
+            ),
           ),
           const SizedBox(height: 24),
           Text('AQI history', style: Theme.of(context).textTheme.titleMedium),
@@ -279,50 +417,13 @@ class _OnlineTabState extends State<_OnlineTab>
                 ButtonSegment(value: entry.key, label: Text(entry.value)),
             ],
             selected: {_timeline},
-            onSelectionChanged: (selection) {
-              setState(() => _timeline = selection.first);
-              _loadHistory();
-            },
+            onSelectionChanged: (selection) =>
+                setState(() => _timeline = selection.first),
           ),
           const SizedBox(height: 16),
           ListenableBuilder(
             listenable: _history,
-            builder: (context, _) {
-              if (_history.isFirstLoad) {
-                return const Skeleton(
-                  label: 'Loading AQI history',
-                  child: SkeletonBlock(height: 220, radius: 12),
-                );
-              }
-              if (!_history.hasData) {
-                return ErrorView(
-                  message: _message(_history.error),
-                  onRetry: _loadHistory,
-                );
-              }
-              final slots = buildHistorySeries(
-                _history.data ?? const [],
-                _shownTimeline,
-              );
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_history.error != null)
-                    QuietNote(
-                      message: _timeline == _shownTimeline
-                          ? null
-                          : "Couldn't load that range. "
-                                'Still showing ${_timelines[_shownTimeline]}.',
-                      updatedAt: _history.updatedAt,
-                      onRetry: _loadHistory,
-                    ),
-                  if (!slots.any((s) => s.aqi != null))
-                    const Text('No data for this period.')
-                  else
-                    SizedBox(height: 220, child: _AqiChart(slots: slots)),
-                ],
-              );
-            },
+            builder: (context, _) => SoftSwitcher(child: _historyBody()),
           ),
         ],
       ),
@@ -330,38 +431,40 @@ class _OnlineTabState extends State<_OnlineTab>
   }
 }
 
-/// First-load placeholder shaped like the AQI tile and metric grid.
+/// First-load placeholder: the AQI tile and metric grid drawn as soft shapes
+/// from the real widgets, so the reading fades in without moving anything.
 class _CurrentSkeleton extends StatelessWidget {
   const _CurrentSkeleton();
 
+  static const _tiles = [
+    ('PM2.5', 'µg/m³'),
+    ('PM10', 'µg/m³'),
+    ('PM1', 'µg/m³'),
+    ('Temperature', '°C'),
+    ('Humidity', '%'),
+    ('Feels like', '°C'),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    return const Skeleton(
+    return Skeleton(
       label: 'Loading the latest reading',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SkeletonBlock(height: 72, radius: 12),
-          SizedBox(height: 12),
-          SkeletonBlock(width: 200, height: 14),
-          SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
-              SizedBox(width: 8),
-              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
-              SizedBox(width: 8),
-              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
-            ],
+          const SkeletonShape(
+            radius: 20,
+            child: AqiTile(aqi: null, caption: 'Last hour average'),
           ),
-          SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
-              SizedBox(width: 8),
-              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
-              SizedBox(width: 8),
-              Expanded(child: SkeletonBlock(height: 64, radius: 12)),
+          const SizedBox(height: 12),
+          _MetricGrid(
+            tiles: [
+              for (final (label, unit) in _tiles)
+                SkeletonShape(
+                  radius: 18,
+                  inset: const EdgeInsets.all(4),
+                  child: MetricTile(label: label, value: '00.0', unit: unit),
+                ),
             ],
           ),
         ],
@@ -392,7 +495,7 @@ class _MetricGrid extends StatelessWidget {
 
     final extent =
         8 + // Card margin
-        24 + // MetricTile padding
+        28 + // MetricTile padding
         lineHeight(theme.textTheme.labelMedium) +
         4 +
         lineHeight(theme.textTheme.titleLarge) +
@@ -410,7 +513,7 @@ class _MetricGrid extends StatelessWidget {
 }
 
 class _AqiChart extends StatelessWidget {
-  const _AqiChart({required this.slots});
+  const _AqiChart({super.key, required this.slots});
 
   /// Every bucket of the timeline; empty buckets break the line.
   final List<HistorySlot> slots;
@@ -460,7 +563,14 @@ class _AqiChart extends StatelessWidget {
           maxX: (slots.length - 1).toDouble(),
           minY: 0,
           maxY: (maxAqi * 1.2).ceilToDouble(),
-          gridData: const FlGridData(drawVerticalLine: false),
+          gridData: FlGridData(
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) => FlLine(
+              color: Theme.of(context).colorScheme.outlineVariant,
+              strokeWidth: 1,
+              dashArray: const [1, 6],
+            ),
+          ),
           borderData: FlBorderData(show: false),
           lineTouchData: LineTouchData(
             touchTooltipData: LineTouchTooltipData(
@@ -536,6 +646,11 @@ class _AqiChart extends StatelessWidget {
             ),
           ],
         ),
+        // Fresh data for the same range eases into place.
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 800),
+        curve: Curves.easeInOutCubic,
       ),
     );
   }

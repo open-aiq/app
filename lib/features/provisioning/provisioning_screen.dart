@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../ble/protocol.dart';
 import '../../services.dart';
+import '../../widgets/aiq_app_bar.dart';
 import '../../widgets/states.dart';
 import 'connect_screen.dart';
 import 'provisioning_controller.dart';
@@ -56,7 +57,21 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
   Widget build(BuildContext context) {
     final controller = _controller;
     return Scaffold(
-      appBar: AppBar(title: const Text('Add monitor')),
+      appBar: PreferredSize(
+        preferredSize: const AiqAppBar(title: '').preferredSize,
+        child: controller == null
+            ? const AiqAppBar(
+                title: 'Add monitor',
+                subtitle: 'Step 1 of 4 · Pair',
+              )
+            : ListenableBuilder(
+                listenable: controller,
+                builder: (context, _) => AiqAppBar(
+                  title: 'Add monitor',
+                  subtitle: _stepLabel(controller.step),
+                ),
+              ),
+      ),
       body: SafeArea(
         child: controller == null
             ? const LoadingView(message: 'Waiting for a monitor…')
@@ -68,6 +83,16 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
     );
   }
 }
+
+/// Where you are in setup, for the top bar: pair, name, WiFi, location.
+String _stepLabel(ProvisioningStep step) => switch (step) {
+  ProvisioningStep.inspecting ||
+  ProvisioningStep.register => 'Step 2 of 4 · Name',
+  ProvisioningStep.wifi => 'Step 3 of 4 · WiFi',
+  ProvisioningStep.location => 'Step 4 of 4 · Location',
+  ProvisioningStep.saving || ProvisioningStep.verifying => 'Finishing up',
+  ProvisioningStep.done => 'All set',
+};
 
 class _StepView extends StatelessWidget {
   const _StepView({required this.controller});

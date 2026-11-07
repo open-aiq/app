@@ -8,16 +8,17 @@ import '../../services.dart';
 import '../../widgets/states.dart';
 
 /// Firmware version, available update, owner approval and live update progress.
-class FirmwareScreen extends StatefulWidget {
-  const FirmwareScreen({super.key, required this.device});
+/// Shown as the Updates tab of the monitor screen.
+class FirmwareView extends StatefulWidget {
+  const FirmwareView({super.key, required this.device});
 
   final Device device;
 
   @override
-  State<FirmwareScreen> createState() => _FirmwareScreenState();
+  State<FirmwareView> createState() => _FirmwareViewState();
 }
 
-class _FirmwareScreenState extends State<FirmwareScreen> {
+class _FirmwareViewState extends State<FirmwareView> {
   DeviceOta? _state;
   Object? _loadError;
   DateTime? _updatedAt;
@@ -108,7 +109,6 @@ class _FirmwareScreenState extends State<FirmwareScreen> {
     final theme = Theme.of(context);
     final state = _state;
     return Scaffold(
-      appBar: AppBar(title: const Text('Firmware')),
       body: SafeArea(
         child: state == null
             ? (_loadError != null

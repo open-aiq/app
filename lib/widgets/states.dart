@@ -63,13 +63,17 @@ class ErrorView extends StatelessWidget {
 class EmptyView extends StatelessWidget {
   const EmptyView({
     super.key,
-    required this.icon,
+    this.icon,
+    this.illustration,
     required this.title,
     required this.message,
     this.action,
-  });
+  }) : assert(icon != null || illustration != null);
 
-  final IconData icon;
+  final IconData? icon;
+
+  /// Shown instead of [icon], e.g. a [MonitorIllustration].
+  final Widget? illustration;
   final String title;
   final String message;
   final Widget? action;
@@ -83,12 +87,27 @@ class EmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: theme.colorScheme.primary),
-            const SizedBox(height: 12),
-            Text(title, style: theme.textTheme.titleMedium),
+            illustration ??
+                Icon(icon, size: 48, color: theme.colorScheme.primary),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center),
-            if (action != null) ...[const SizedBox(height: 16), action!],
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            if (action != null) ...[const SizedBox(height: 20), action!],
           ],
         ),
       ),
@@ -179,6 +198,71 @@ class SkeletonBlock extends StatelessWidget {
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(radius),
       ),
+    );
+  }
+}
+
+/// Draws a placeholder block exactly the size of [child], which is laid out
+/// but not shown. Pass the real widget with stand-in values, so the skeleton
+/// and the content it becomes are the same size and nothing jumps.
+class SkeletonShape extends StatelessWidget {
+  const SkeletonShape({
+    super.key,
+    required this.child,
+    this.radius = 8,
+    this.inset = EdgeInsets.zero,
+  });
+
+  final Widget child;
+  final double radius;
+
+  /// Shrinks the block inside the child's box, e.g. to skip a Card margin.
+  final EdgeInsets inset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        ExcludeSemantics(
+          child: IgnorePointer(child: Opacity(opacity: 0, child: child)),
+        ),
+        Positioned.fill(
+          child: Padding(
+            padding: inset,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(radius),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Cross-fades gently when its child's key changes, e.g. from a skeleton to
+/// the content it stood in for. Instant under reduced motion. Children that
+/// keep their key (such as a quiet refresh) update without any animation.
+class SoftSwitcher extends StatelessWidget {
+  const SoftSwitcher({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 700),
+      switchInCurve: Curves.easeInOutCubic,
+      switchOutCurve: Curves.easeInOutCubic,
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.topLeft,
+        children: [...previous, ?current],
+      ),
+      child: child,
     );
   }
 }

@@ -9,6 +9,9 @@ import 'features/account/account.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/devices/device_list_screen.dart';
 import 'services.dart';
+import 'widgets/aiq_app_bar.dart';
+import 'widgets/states.dart';
+import 'theme.dart';
 
 void main() {
   runApp(const OpenAiqApp());
@@ -21,7 +24,7 @@ class OpenAiqApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = _buildTheme(Brightness.light);
+    final theme = buildTheme(Brightness.light);
     if (AppConfig.clerkPublishableKey.isEmpty) {
       return MaterialApp(
         title: 'Open AIQ',
@@ -43,7 +46,7 @@ class OpenAiqApp extends StatelessWidget {
     return MaterialApp(
       title: 'Open AIQ',
       theme: theme,
-      darkTheme: _buildTheme(Brightness.dark),
+      darkTheme: buildTheme(Brightness.dark),
       themeMode: themeMode,
       // Cross-fade between light and dark only when motion is welcome.
       themeAnimationDuration:
@@ -62,10 +65,7 @@ class OpenAiqApp extends StatelessWidget {
       ),
       home: ClerkErrorListener(
         child: ClerkAuthBuilder(
-          signedInBuilder: (context, authState) => DeviceListScreen(
-            onSignOut: authState.signOut,
-            account: _account(authState.user),
-          ),
+          signedInBuilder: (context, authState) => const DeviceListScreen(),
           signedOutBuilder: (context, authState) => const SignInScreen(),
         ),
       ),
@@ -80,36 +80,6 @@ Account? _account(clerk.User? user) {
     name: name.isNotEmpty ? name : (user.email ?? 'Your account'),
     email: user.email,
     imageUrl: user.hasImage == true ? user.imageUrl : null,
-  );
-}
-
-ThemeData _buildTheme(Brightness brightness) {
-  final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF2E7D5B),
-    brightness: brightness,
-  );
-  return ThemeData(
-    colorScheme: scheme,
-    useMaterial3: true,
-    extensions: [
-      // Match Clerk's sign-in widgets to the app instead of Clerk's default
-      // black/purple palette. `background` equals the page colour and
-      // `altBackground` (Clerk's card shadow) does too, so the card blends into
-      // the page. Clerk paints primary button text in `background`, so it must
-      // contrast with `accent`.
-      ClerkThemeExtension(
-        colors: ClerkThemeColors(
-          background: scheme.surface,
-          altBackground: scheme.surface,
-          borderSide: scheme.outlineVariant,
-          text: scheme.onSurface,
-          icon: scheme.onSurfaceVariant,
-          lightweightText: scheme.onSurfaceVariant,
-          error: scheme.error,
-          accent: scheme.primary,
-        ),
-      ),
-    ],
   );
 }
 
@@ -163,7 +133,28 @@ class _SignedInState extends State<_SignedIn> {
 
   @override
   Widget build(BuildContext context) {
-    return AppServices(api: _api, ble: _ble, child: widget.child);
+    return AppServices(
+      api: _api,
+      ble: _ble,
+      child: AccountScope(
+        account: _account(widget.authState.user),
+        onSignOut: _signOut,
+        child: widget.child,
+      ),
+    );
+  }
+
+  Future<void> _signOut(BuildContext context) async {
+    if (!await confirmDialog(
+      context,
+      title: 'Sign out?',
+      message: 'You can sign in again any time.',
+      confirmLabel: 'Sign out',
+    )) {
+      return;
+    }
+    await _ble.disconnect();
+    await widget.authState.signOut();
   }
 }
 

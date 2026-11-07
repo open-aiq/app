@@ -5,9 +5,13 @@ import 'package:flutter/material.dart';
 /// rides on color alone.
 @immutable
 class AqiInfo {
-  const AqiInfo(this.label, this.background, this.foreground);
+  const AqiInfo(this.label, this.background, this.foreground, [String? short])
+    : short = short ?? label;
 
   final String label;
+
+  /// A word or two for tight spaces, such as the home screen cards.
+  final String short;
   final Color background;
   final Color foreground;
 }
@@ -21,6 +25,7 @@ const _bands = <(int, AqiInfo)>[
       'Unhealthy for Sensitive Groups',
       Color(0xFFFF9B57),
       Color(0xFFB25826),
+      'Unhealthy for some',
     ),
   ),
   (200, AqiInfo('Unhealthy', Color(0xFFFE6A69), Color(0xFFAF2C3B))),
@@ -28,7 +33,12 @@ const _bands = <(int, AqiInfo)>[
 ];
 
 const _hazardous = AqiInfo('Hazardous', Color(0xFFA87383), Color(0xFF683E51));
-const _unknown = AqiInfo('Unknown', Color(0xFFE5E5E5), Color(0xFF525252));
+const _unknown = AqiInfo(
+  'Unknown',
+  Color(0xFFE5E5E5),
+  Color(0xFF525252),
+  'No data',
+);
 
 AqiInfo aqiInfo(num? aqi) {
   if (aqi == null || aqi.isNaN) return _unknown;
