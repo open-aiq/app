@@ -61,10 +61,10 @@ void main() {
 
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byType(TabBarView), findsNothing);
-    for (final label in ['Overview', 'Live', 'Logs', 'Updates', 'Settings']) {
+    for (final label in ['Overview', 'Live', 'Logs', 'Settings']) {
       expect(find.text(label), findsOneWidget);
     }
-    // A pending update shows a dot on the Updates tab.
+    // A pending update shows a dot on the Settings tab.
     expect(
       find.descendant(
         of: find.byType(NavigationBar),
@@ -75,7 +75,7 @@ void main() {
 
     await tester.tap(find.text('Logs'));
     await tester.pumpAndSettle();
-    expect(find.text('No log entries'), findsOneWidget);
+    expect(find.text('All quiet'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
     ble.dispose();

@@ -162,7 +162,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                 device: device,
                 tick: _tick,
                 onTap: () => _open(device),
-                onBadgeTap: () => _open(device, DeviceTab.updates),
+                onBadgeTap: () => _open(device, DeviceTab.settings),
               ),
             ],
           ],

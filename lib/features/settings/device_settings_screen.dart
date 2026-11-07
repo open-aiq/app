@@ -4,7 +4,9 @@ import '../../api/api_client.dart';
 import '../../api/models.dart';
 import '../../ble/protocol.dart';
 import '../../services.dart';
+import '../../widgets/sections.dart';
 import '../../widgets/states.dart';
+import '../firmware/firmware_screen.dart' show FirmwareSection;
 import '../provisioning/connect_screen.dart';
 import '../provisioning/provisioning_screen.dart' show currentPosition;
 
@@ -257,129 +259,192 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final ble = AppServices.of(context).ble;
+    final idle = _bleBusy == null;
     return Scaffold(
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text('General', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _name,
-              maxLength: 100,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            SwitchListTile(
-              title: const Text('Installed outdoors'),
-              value: _outdoor,
-              onChanged: (value) => setState(() => _outdoor = value),
-            ),
-            SwitchListTile(
-              title: const Text('Share data publicly'),
-              subtitle: const Text('Readings appear on the public map'),
-              value: _public,
-              onChanged: (value) => setState(() => _public = value),
-            ),
-            SwitchListTile(
-              title: const Text('Share exact location'),
-              subtitle: Text(
-                _public ? 'Shown on the public map' : 'Requires public sharing',
-              ),
-              value: _public && _locationPublic,
-              onChanged: _public
-                  ? (value) => setState(() => _locationPublic = value)
-                  : null,
-            ),
-            InlineError(_error),
-            FilledButton(
-              onPressed: _saving || !_dirty ? null : _save,
-              child: Text(_saving ? 'Saving…' : 'Save changes'),
-            ),
-            const Divider(height: 40),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'On the monitor',
-                    style: theme.textTheme.titleMedium,
+      body: ListView(
+        padding: pagePadding,
+        children: [
+          const SectionLabel('General'),
+          SectionCard(
+            children: [
+              SectionField(
+                child: TextField(
+                  controller: _name,
+                  maxLength: 100,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    counterText: '',
                   ),
+                  onChanged: (_) => setState(() {}),
                 ),
-                ListenableBuilder(
-                  listenable: ble,
-                  builder: (context, _) => Chip(
-                    avatar: Icon(
-                      ble.isConnectedTo(_device.deviceId)
-                          ? Icons.bluetooth_connected
-                          : Icons.bluetooth_disabled,
-                      size: 16,
-                    ),
-                    label: Text(
-                      ble.isConnectedTo(_device.deviceId)
-                          ? 'Connected'
-                          : 'Not connected',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const Text(
-              'These settings are stored on the monitor and need a Bluetooth connection (pairing mode).',
-            ),
-            if (_bleBusy != null) ...[
-              const SizedBox(height: 8),
-              LinearProgressIndicator(semanticsLabel: _bleBusy),
+              ),
+              SectionSwitch(
+                icon: const Icon(Icons.park_outlined),
+                title: 'Installed outdoors',
+                value: _outdoor,
+                onChanged: (value) => setState(() => _outdoor = value),
+              ),
+              SectionSwitch(
+                icon: const Icon(Icons.public),
+                title: 'Share data publicly',
+                subtitle: 'Readings appear on the public map',
+                value: _public,
+                onChanged: (value) => setState(() => _public = value),
+              ),
+              SectionSwitch(
+                icon: const Icon(Icons.place_outlined),
+                title: 'Share exact location',
+                subtitle: _public
+                    ? 'Shown on the public map'
+                    : 'Turn on public sharing first',
+                value: _public && _locationPublic,
+                onChanged: _public
+                    ? (value) => setState(() => _locationPublic = value)
+                    : null,
+              ),
             ],
-            InlineError(_bleError),
-            ListTile(
-              leading: const Icon(Icons.wifi),
-              title: const Text('Change WiFi network'),
-              onTap: _bleBusy == null ? _changeWifi : null,
+          ),
+          InlineError(_error),
+          AnimatedSize(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 300),
+            curve: Curves.easeInOutCubic,
+            child: _dirty || _saving
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: FilledButton(
+                      onPressed: _saving ? null : _save,
+                      child: Text(_saving ? 'Saving…' : 'Save changes'),
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+          const SectionLabel('Firmware'),
+          FirmwareSection(device: _device),
+          SectionLabel(
+            'On the monitor',
+            trailing: ListenableBuilder(
+              listenable: ble,
+              builder: (context, _) {
+                final connected = ble.isConnectedTo(_device.deviceId);
+                return _BleChip(connected: connected);
+              },
             ),
-            ListTile(
-              leading: const Icon(Icons.my_location),
-              title: const Text('Update location from this phone'),
-              onTap: _bleBusy == null ? _updateLocation : null,
-            ),
-            ListTile(
-              leading: const Icon(Icons.key),
-              title: const Text('Rotate device key'),
-              onTap: _bleBusy == null ? _rotateKey : null,
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('Monitor details'),
-              onTap: _bleBusy == null ? _showInfo : null,
-            ),
-            ListTile(
-              leading: Icon(Icons.restart_alt, color: theme.colorScheme.error),
-              title: Text(
-                'Factory reset monitor',
-                style: TextStyle(color: theme.colorScheme.error),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+            child: Text(
+              'These need a Bluetooth connection. Put the monitor in pairing mode first.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              onTap: _bleBusy == null ? _factoryReset : null,
             ),
-            const Divider(height: 40),
-            Text(
-              'Danger zone',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.error,
+          ),
+          if (_bleBusy != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+              child: LinearProgressIndicator(
+                minHeight: 4,
+                borderRadius: BorderRadius.circular(2),
+                semanticsLabel: _bleBusy,
               ),
             ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: theme.colorScheme.error,
+          InlineError(_bleError),
+          SectionCard(
+            children: [
+              SectionRow(
+                icon: const Icon(Icons.wifi),
+                title: 'Change WiFi network',
+                onTap: _changeWifi,
+                enabled: idle,
               ),
-              onPressed: _delete,
-              icon: const Icon(Icons.delete_forever),
-              label: const Text('Delete device'),
+              SectionRow(
+                icon: const Icon(Icons.my_location),
+                title: 'Update location',
+                subtitle: "Uses this phone's location",
+                onTap: _updateLocation,
+                enabled: idle,
+              ),
+              SectionRow(
+                icon: const Icon(Icons.key_outlined),
+                title: 'Replace device key',
+                subtitle: 'The old key stops working right away',
+                onTap: _rotateKey,
+                enabled: idle,
+              ),
+              SectionRow(
+                icon: const Icon(Icons.info_outline),
+                title: 'Monitor details',
+                onTap: _showInfo,
+                enabled: idle,
+              ),
+              SectionRow(
+                icon: const Icon(Icons.restart_alt),
+                title: 'Factory reset',
+                subtitle: 'Erases WiFi, location and pairing',
+                destructive: true,
+                onTap: _factoryReset,
+                enabled: idle,
+              ),
+            ],
+          ),
+          SectionLabel('Danger zone', color: theme.colorScheme.error),
+          SectionCard(
+            children: [
+              SectionRow(
+                icon: const Icon(Icons.delete_outline),
+                title: 'Delete monitor',
+                subtitle: 'Removes it and its readings from your account',
+                destructive: true,
+                onTap: _delete,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bluetooth connection state for the "On the monitor" section.
+class _BleChip extends StatelessWidget {
+  const _BleChip({required this.connected});
+
+  final bool connected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: connected
+            ? scheme.secondaryContainer
+            : scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            connected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+            size: 14,
+            color: connected
+                ? scheme.onSecondaryContainer
+                : scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            connected ? 'Connected' : 'Not connected',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: connected
+                  ? scheme.onSecondaryContainer
+                  : scheme.onSurfaceVariant,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

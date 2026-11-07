@@ -4,6 +4,8 @@ import 'package:geolocator/geolocator.dart';
 import '../../ble/protocol.dart';
 import '../../services.dart';
 import '../../widgets/aiq_app_bar.dart';
+import '../../widgets/monitor_illustration.dart';
+import '../../widgets/sections.dart';
 import '../../widgets/states.dart';
 import 'connect_screen.dart';
 import 'provisioning_controller.dart';
@@ -74,7 +76,7 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
       ),
       body: SafeArea(
         child: controller == null
-            ? const LoadingView(message: 'Waiting for a monitor…')
+            ? const WaitingView(title: 'Waiting for a monitor…')
             : ListenableBuilder(
                 listenable: controller,
                 builder: (context, _) => _StepView(controller: controller),
@@ -104,21 +106,19 @@ class _StepView extends StatelessWidget {
     final body = switch (controller.step) {
       ProvisioningStep.inspecting =>
         controller.error == null
-            ? const LoadingView(message: 'Reading monitor details…')
+            ? const WaitingView(title: 'Getting to know your monitor…')
             : ErrorView(message: controller.error!, onRetry: controller.start),
       ProvisioningStep.register => _RegisterStep(controller: controller),
       ProvisioningStep.wifi => _WifiStep(controller: controller),
       ProvisioningStep.location => _LocationStep(controller: controller),
-      ProvisioningStep.saving => const LoadingView(
-        message: 'Saving settings and joining WiFi…',
+      ProvisioningStep.saving => const WaitingView(
+        title: 'Saving and joining WiFi…',
+        message: 'This usually takes a few seconds.',
       ),
       ProvisioningStep.verifying => _VerifyStep(controller: controller),
       ProvisioningStep.done => _DoneStep(controller: controller),
     };
-    return AnimatedSwitcher(
-      duration: MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : const Duration(milliseconds: 200),
+    return SoftSwitcher(
       child: KeyedSubtree(key: ValueKey(controller.step), child: body),
     );
   }
@@ -139,16 +139,36 @@ class _StepScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: pagePadding,
       children: [
-        Text(title, style: theme.textTheme.titleLarge),
-        if (subtitle != null) ...[const SizedBox(height: 8), Text(subtitle!)],
-        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+          child: Text(
+            title,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        if (subtitle != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              subtitle!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
         ...children,
       ],
     );
   }
 }
+
+/// Space above a step's main button.
+const _actionGap = SizedBox(height: 20);
 
 class _RegisterStep extends StatefulWidget {
   const _RegisterStep({required this.controller});
@@ -178,49 +198,60 @@ class _RegisterStepState extends State<_RegisterStep> {
     return Form(
       key: _form,
       child: _StepScaffold(
-        title: 'Register this monitor',
+        title: 'Name your monitor',
         subtitle: controller.registeredElsewhere
-            ? 'This monitor is linked to a device id (${controller.info?.deviceId}) that is not in your account. '
-                  'Registering gives it new credentials for your account.'
-            : 'The monitor is not registered yet. It will be added to your account and receive its own credentials.',
+            ? "This monitor was set up on another account (${controller.info?.deviceId}). Adding it here gives it fresh credentials for yours."
+            : "We'll add it to your account and give it its own credentials.",
         children: [
-          TextFormField(
-            controller: _name,
-            autofocus: true,
-            maxLength: 100,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
-              labelText: 'Name',
-              hintText: 'Living room',
-              border: OutlineInputBorder(),
-            ),
-            validator: (value) =>
-                (value == null || value.trim().isEmpty) ? 'Enter a name' : null,
-          ),
-          SwitchListTile(
-            title: const Text('Installed outdoors'),
-            value: _outdoor,
-            onChanged: (value) => setState(() => _outdoor = value),
-          ),
-          SwitchListTile(
-            title: const Text('Share data publicly'),
-            subtitle: const Text('Readings appear on the public map'),
-            value: _public,
-            onChanged: (value) => setState(() {
-              _public = value;
-              if (!value) _locationPublic = false;
-            }),
-          ),
-          SwitchListTile(
-            title: const Text('Share exact location'),
-            subtitle: const Text('Requires public sharing'),
-            value: _locationPublic,
-            onChanged: _public
-                ? (value) => setState(() => _locationPublic = value)
-                : null,
+          SectionCard(
+            children: [
+              SectionField(
+                child: TextFormField(
+                  controller: _name,
+                  autofocus: true,
+                  maxLength: 100,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    hintText: 'Living room',
+                    counterText: '',
+                  ),
+                  validator: (value) => (value == null || value.trim().isEmpty)
+                      ? 'Enter a name'
+                      : null,
+                ),
+              ),
+              SectionSwitch(
+                icon: const Icon(Icons.park_outlined),
+                title: 'Installed outdoors',
+                value: _outdoor,
+                onChanged: (value) => setState(() => _outdoor = value),
+              ),
+              SectionSwitch(
+                icon: const Icon(Icons.public),
+                title: 'Share data publicly',
+                subtitle: 'Readings appear on the public map',
+                value: _public,
+                onChanged: (value) => setState(() {
+                  _public = value;
+                  if (!value) _locationPublic = false;
+                }),
+              ),
+              SectionSwitch(
+                icon: const Icon(Icons.place_outlined),
+                title: 'Share exact location',
+                subtitle: _public
+                    ? 'Shown on the public map'
+                    : 'Turn on public sharing first',
+                value: _locationPublic,
+                onChanged: _public
+                    ? (value) => setState(() => _locationPublic = value)
+                    : null,
+              ),
+            ],
           ),
           InlineError(controller.error),
-          const SizedBox(height: 8),
+          _actionGap,
           FilledButton(
             onPressed: controller.busy
                 ? null
@@ -235,7 +266,7 @@ class _RegisterStepState extends State<_RegisterStep> {
                   },
             child: controller.busy
                 ? const _ButtonProgress()
-                : const Text('Register'),
+                : const Text('Add to my account'),
           ),
         ],
       ),
@@ -276,69 +307,112 @@ class _WifiStepState extends State<_WifiStep> {
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
+    final scanning = controller.busy && controller.networks.isEmpty;
     return _StepScaffold(
-      title: 'Connect to WiFi',
-      subtitle: controller.device == null
-          ? null
-          : 'Monitor "${controller.device!.name}". Choose a 2.4 GHz network.',
+      title: 'Choose WiFi',
+      subtitle:
+          'Pick the 2.4 GHz network ${controller.device?.name ?? 'the monitor'} should use.',
       children: [
-        Row(
+        SectionLabel(
+          'Networks nearby',
+          trailing: IconButton(
+            tooltip: 'Scan again',
+            visualDensity: VisualDensity.compact,
+            onPressed: controller.busy ? null : controller.scanWifi,
+            icon: const Icon(Icons.refresh),
+          ),
+        ),
+        SoftSwitcher(
+          child: scanning
+              ? Skeleton(
+                  key: const ValueKey('scanning'),
+                  label: 'Looking for networks',
+                  child: SectionCard(
+                    children: [
+                      for (var i = 0; i < 3; i++)
+                        const SkeletonShape(
+                          child: SectionRow(
+                            icon: Icon(Icons.wifi),
+                            title: 'Home network',
+                          ),
+                        ),
+                    ],
+                  ),
+                )
+              : controller.networks.isEmpty
+              ? Padding(
+                  key: const ValueKey('none'),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    "No networks found yet. You can type the name below.",
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                )
+              : SectionCard(
+                  key: const ValueKey('networks'),
+                  children: [
+                    for (final network in controller.networks)
+                      Semantics(
+                        selected: network.ssid == _ssid.text,
+                        child: SectionRow(
+                          icon: Icon(
+                            network.secured ? Icons.wifi_password : Icons.wifi,
+                            semanticLabel:
+                                '${network.bars} of 4 bars, ${network.secured ? 'secured' : 'open'}',
+                          ),
+                          title: network.ssid,
+                          onTap: () =>
+                              setState(() => _ssid.text = network.ssid),
+                          trailing: network.ssid == _ssid.text
+                              ? Icon(
+                                  Icons.check_circle,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.secondary,
+                                  semanticLabel: 'Selected',
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+        const SectionLabel('Network'),
+        SectionCard(
           children: [
-            Text(
-              'Networks nearby',
-              style: Theme.of(context).textTheme.titleSmall,
+            SectionField(
+              child: TextField(
+                controller: _ssid,
+                decoration: const InputDecoration(
+                  labelText: 'Network name (SSID)',
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
             ),
-            const Spacer(),
-            IconButton(
-              tooltip: 'Scan again',
-              onPressed: controller.busy ? null : controller.scanWifi,
-              icon: const Icon(Icons.refresh),
+            SectionField(
+              child: TextField(
+                controller: _password,
+                obscureText: _obscure,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  suffixIcon: IconButton(
+                    tooltip: _obscure ? 'Show password' : 'Hide password',
+                    icon: Icon(
+                      _obscure ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
-        if (controller.busy && controller.networks.isEmpty)
-          const LinearProgressIndicator(),
-        for (final network in controller.networks)
-          ListTile(
-            selected: network.ssid == _ssid.text,
-            onTap: () => setState(() => _ssid.text = network.ssid),
-            title: Text(network.ssid),
-            leading: Icon(
-              network.secured ? Icons.wifi_password : Icons.wifi,
-              semanticLabel:
-                  '${network.bars} of 4 bars, ${network.secured ? 'secured' : 'open'}',
-            ),
-            trailing: network.ssid == _ssid.text
-                ? const Icon(Icons.check, semanticLabel: 'Selected')
-                : null,
-          ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _ssid,
-          decoration: const InputDecoration(
-            labelText: 'Network name (SSID)',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _password,
-          obscureText: _obscure,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: InputDecoration(
-            labelText: 'Password',
-            border: const OutlineInputBorder(),
-            suffixIcon: IconButton(
-              tooltip: _obscure ? 'Show password' : 'Hide password',
-              icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-              onPressed: () => setState(() => _obscure = !_obscure),
-            ),
-          ),
-        ),
         InlineError(controller.error),
-        const SizedBox(height: 8),
+        _actionGap,
         FilledButton(
           onPressed: controller.busy || _ssid.text.trim().isEmpty
               ? null
@@ -396,61 +470,62 @@ class _LocationStepState extends State<_LocationStep> {
     final valid =
         lat != null && lon != null && lat.abs() <= 90 && lon.abs() <= 180;
     return _StepScaffold(
-      title: 'Monitor location',
+      title: 'Where is it?',
       subtitle:
-          'The location is attached to each reading. It is only shown publicly if you share the exact location.',
+          'Each reading carries this location. It only appears publicly if you share the exact location.',
       children: [
-        OutlinedButton.icon(
-          onPressed: _locating ? null : _useCurrentLocation,
-          icon: const Icon(Icons.my_location),
-          label: Text(_locating ? 'Locating…' : 'Use this phone\'s location'),
-        ),
-        InlineError(_locationError),
-        const SizedBox(height: 12),
-        Row(
+        SectionCard(
           children: [
-            Expanded(
-              child: TextField(
-                controller: _lat,
-                keyboardType: const TextInputType.numberWithOptions(
-                  signed: true,
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Latitude',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
+            SectionRow(
+              icon: const Icon(Icons.my_location),
+              title: _locating ? 'Finding you…' : "Use this phone's location",
+              onTap: _locating ? null : _useCurrentLocation,
+              enabled: !_locating,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TextField(
-                controller: _lon,
-                keyboardType: const TextInputType.numberWithOptions(
-                  signed: true,
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Longitude',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => setState(() {}),
+            SectionField(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _lat,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        signed: true,
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(labelText: 'Latitude'),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _lon,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        signed: true,
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(labelText: 'Longitude'),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
+        InlineError(_locationError),
         InlineError(controller.error),
-        const SizedBox(height: 8),
+        _actionGap,
         FilledButton(
           onPressed: controller.busy || !valid
               ? null
               : () => controller.submitLocation(lat: lat, lon: lon),
           child: const Text('Save to monitor'),
         ),
+        const SizedBox(height: 8),
         TextButton(
           onPressed: controller.busy ? null : () => controller.submitLocation(),
-          child: const Text('Skip location'),
+          child: const Text('Skip for now'),
         ),
       ],
     );
@@ -465,9 +540,9 @@ class _VerifyStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!controller.verifyTimedOut) {
-      return const LoadingView(
-        message:
-            'WiFi connected. Waiting for the first reading to reach Open AIQ…\nThis usually takes under a minute.',
+      return const WaitingView(
+        title: 'Waiting for the first reading…',
+        message: "WiFi's connected. This usually takes under a minute.",
       );
     }
     return _StepScaffold(
@@ -477,6 +552,7 @@ class _VerifyStep extends StatelessWidget {
           'Check that the network has internet access. If the monitor was set up before, its key may be out of date.',
       children: [
         InlineError(controller.error),
+        _actionGap,
         FilledButton(
           onPressed: controller.busy ? null : controller.retryVerify,
           child: const Text('Keep waiting'),
@@ -508,10 +584,10 @@ class _DoneStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return EmptyView(
-      icon: Icons.check_circle,
-      title: '${controller.device?.name ?? 'Monitor'} is online',
+      illustration: const MonitorIllustration(),
+      title: '${controller.device?.name ?? 'Your monitor'} is online',
       message:
-          'Readings are uploaded every 10 minutes. Live readings are available while connected over Bluetooth.',
+          "You'll see a new reading every 10 minutes, and live ones whenever you're nearby over Bluetooth.",
       action: FilledButton(
         onPressed: () => Navigator.of(context).pop(true),
         child: const Text('Done'),

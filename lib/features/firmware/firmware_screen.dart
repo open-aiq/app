@@ -5,20 +5,21 @@ import 'package:flutter/material.dart';
 import '../../api/api_client.dart';
 import '../../api/models.dart';
 import '../../services.dart';
+import '../../widgets/sections.dart';
 import '../../widgets/states.dart';
 
 /// Firmware version, available update, owner approval and live update progress.
-/// Shown as the Updates tab of the monitor screen.
-class FirmwareView extends StatefulWidget {
-  const FirmwareView({super.key, required this.device});
+/// Shown as a section of the monitor's Settings tab.
+class FirmwareSection extends StatefulWidget {
+  const FirmwareSection({super.key, required this.device});
 
   final Device device;
 
   @override
-  State<FirmwareView> createState() => _FirmwareViewState();
+  State<FirmwareSection> createState() => _FirmwareSectionState();
 }
 
-class _FirmwareViewState extends State<FirmwareView> {
+class _FirmwareSectionState extends State<FirmwareSection> {
   DeviceOta? _state;
   Object? _loadError;
   DateTime? _updatedAt;
@@ -106,112 +107,140 @@ class _FirmwareViewState extends State<FirmwareView> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final state = _state;
-    return Scaffold(
-      body: SafeArea(
-        child: state == null
-            ? (_loadError != null
-                  ? ErrorView(
-                      message: _loadError is ApiException
-                          ? (_loadError as ApiException).message
-                          : 'Could not load firmware status.',
-                      onRetry: _load,
-                    )
-                  : const Skeleton(
-                      label: 'Loading firmware status',
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SkeletonBlock(width: 220, height: 40),
-                            SizedBox(height: 24),
-                            SkeletonBlock(height: 120, radius: 12),
-                          ],
-                        ),
-                      ),
-                    ))
-            : RefreshIndicator(
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.all(16),
+    final Widget body;
+    if (state == null && _loadError == null) {
+      body = const Skeleton(
+        key: ValueKey('loading'),
+        label: 'Loading firmware status',
+        child: SectionCard(
+          children: [
+            SkeletonShape(
+              child: SectionRow(
+                icon: Icon(Icons.memory),
+                title: 'Installed firmware',
+                subtitle: '0.0.0',
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (state == null) {
+      body = KeyedSubtree(
+        key: const ValueKey('error'),
+        child: QuietNote(
+          message: _loadError is ApiException
+              ? (_loadError as ApiException).message
+              : "Couldn't load firmware status. Tap to try again.",
+          onRetry: _load,
+        ),
+      );
+    } else {
+      body = KeyedSubtree(
+        key: const ValueKey('firmware'),
+        child: _content(context, state),
+      );
+    }
+    return SoftSwitcher(child: body);
+  }
+
+  Widget _content(BuildContext context, DeviceOta state) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final job = state.job;
+    final active = job?.active ?? false;
+    final available = state.available;
+    final upToDate =
+        available == null && !active && state.currentVersion != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_loadError != null)
+          QuietNote(updatedAt: _updatedAt, onRetry: _load),
+        SectionCard(
+          children: [
+            SectionRow(
+              icon: const Icon(Icons.memory),
+              title: state.currentVersion == null
+                  ? 'Installed firmware'
+                  : 'Firmware ${state.currentVersion}',
+              subtitle: state.currentVersion == null
+                  ? "This firmware can't update over the air"
+                  : upToDate
+                  ? 'Up to date'
+                  : null,
+              trailing: upToDate
+                  ? Icon(Icons.check_circle, color: scheme.secondary)
+                  : null,
+            ),
+            if (job != null && !active && job.status == 'failed')
+              SectionRow(
+                icon: const Icon(Icons.error_outline),
+                destructive: true,
+                title: 'Update to ${job.version} failed',
+                subtitle: job.error ?? 'Unknown error',
+              ),
+            if (job != null && job.status == 'succeeded' && available == null)
+              SectionRow(
+                icon: const Icon(Icons.celebration_outlined),
+                title: 'Updated to ${job.version}',
+              ),
+            if (active) _JobCard(job: job!, onCancel: _acting ? null : _cancel),
+            if (available != null && !active)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_loadError != null)
-                      QuietNote(updatedAt: _updatedAt, onRetry: _load),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.memory),
-                      title: const Text('Installed firmware'),
-                      subtitle: Text(
-                        state.currentVersion ??
-                            'Unknown (this firmware cannot update over the air)',
-                      ),
-                    ),
-                    InlineError(_actionError),
-                    if (state.job != null && state.job!.active)
-                      _JobCard(
-                        job: state.job!,
-                        onCancel: _acting ? null : _cancel,
-                      ),
-                    if (state.job != null &&
-                        !state.job!.active &&
-                        state.job!.status == 'failed')
-                      InlineError(
-                        'The last update to ${state.job!.version} failed: ${state.job!.error ?? 'unknown error'}.',
-                      ),
-                    if (state.job != null &&
-                        state.job!.status == 'succeeded' &&
-                        state.available == null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          'Updated to ${state.job!.version}.',
-                          style: theme.textTheme.bodyLarge,
+                    Row(
+                      children: [
+                        IconBubble(
+                          icon: const Icon(Icons.system_update),
+                          background: scheme.tertiaryContainer,
+                          foreground: scheme.onTertiaryContainer,
                         ),
-                      ),
-                    if (state.available != null &&
-                        !(state.job?.active ?? false))
-                      Card.outlined(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
+                        const SizedBox(width: 14),
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Update available: ${state.available!.version}',
-                                style: theme.textTheme.titleMedium,
+                                'Version ${available.version} is ready',
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                               Text(
-                                '${(state.available!.size / 1024).round()} KB',
-                              ),
-                              if (state.available!.notes.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Text(state.available!.notes),
-                              ],
-                              const SizedBox(height: 12),
-                              FilledButton.icon(
-                                onPressed: _acting
-                                    ? null
-                                    : () => _approve(state.available!),
-                                icon: const Icon(Icons.system_update),
-                                label: const Text('Approve and install'),
+                                '${(available.size / 1024).round()} KB',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
                               ),
                             ],
                           ),
                         ),
+                      ],
+                    ),
+                    if (available.notes.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(available.notes),
+                    ],
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _acting ? null : () => _approve(available),
+                        icon: const Icon(Icons.system_update),
+                        label: const Text('Install update'),
                       ),
-                    if (state.available == null &&
-                        !(state.job?.active ?? false) &&
-                        state.currentVersion != null)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text('The monitor is up to date.'),
-                      ),
+                    ),
                   ],
                 ),
               ),
-      ),
+          ],
+        ),
+        InlineError(_actionError),
+      ],
     );
   }
 }
@@ -239,30 +268,37 @@ class _JobCard extends StatelessWidget {
         'The monitor is restarting and verifying the new firmware.',
       ),
     };
-    return Card.filled(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(detail),
-            const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: job.status == 'approved' ? null : job.progress / 100,
-              semanticsLabel: 'Update progress',
-              semanticsValue: '${job.progress}%',
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
-            if (job.status == 'approved') ...[
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: onCancel,
-                child: const Text('Cancel update'),
-              ),
-            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            detail,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(3),
+            value: job.status == 'approved' ? null : job.progress / 100,
+            semanticsLabel: 'Update progress',
+            semanticsValue: '${job.progress}%',
+          ),
+          if (job.status == 'approved') ...[
+            const SizedBox(height: 12),
+            TextButton(onPressed: onCancel, child: const Text('Cancel update')),
           ],
-        ),
+        ],
       ),
     );
   }

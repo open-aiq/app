@@ -7,23 +7,25 @@ import 'package:intl/intl.dart';
 import '../../aqi.dart';
 import '../../api/api_client.dart';
 import '../../api/models.dart';
+import '../../ble/connection_manager.dart';
 import '../../ble/protocol.dart';
 import '../../services.dart';
 import '../../widgets/aiq_app_bar.dart';
 import '../../widgets/keep_last.dart';
 import '../../widgets/monitor_illustration.dart';
 import '../../widgets/ota_badge.dart';
+import '../../widgets/sections.dart';
+import '../../widgets/soft_card.dart';
 import '../../widgets/states.dart';
 import '../../widgets/tiles.dart';
 import '../../format.dart';
-import '../firmware/firmware_screen.dart' show FirmwareView;
 import '../logs/logs_screen.dart' show LogsView;
 import '../provisioning/connect_screen.dart';
 import '../settings/device_settings_screen.dart' show DeviceSettingsView;
 import 'history_series.dart';
 
 /// The sections of a monitor, in bottom-bar order.
-enum DeviceTab { overview, live, logs, updates, settings }
+enum DeviceTab { overview, live, logs, settings }
 
 /// One monitor. A bottom navigation bar switches between its sections; tabs
 /// never change on a swipe, so the history chart keeps horizontal drags.
@@ -106,7 +108,6 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     ),
     DeviceTab.live => _LiveTab(device: _device),
     DeviceTab.logs => LogsView(device: _device),
-    DeviceTab.updates => FirmwareView(device: _device),
     DeviceTab.settings => DeviceSettingsView(
       device: _device,
       onChanged: (device) => setState(() => _device = device),
@@ -125,11 +126,11 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           builder: (context, _) => AiqAppBar(
             title: _device.name,
             subtitle: _status,
-            chip: _tab == DeviceTab.updates
+            chip: _tab == DeviceTab.settings
                 ? null
                 : OtaBadge(
                     summary: ota,
-                    onTap: () => _select(DeviceTab.updates),
+                    onTap: () => _select(DeviceTab.settings),
                   ),
           ),
         ),
@@ -163,16 +164,12 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             label: 'Logs',
           ),
           NavigationDestination(
+            // A waiting firmware update shows as a dot on Settings.
             icon: Badge(
               isLabelVisible: ota?.needsAttention ?? false,
-              child: const Icon(Icons.system_update_outlined),
+              child: const Icon(Icons.tune_outlined),
             ),
-            selectedIcon: const Icon(Icons.system_update),
-            label: 'Updates',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.tune_outlined),
-            selectedIcon: Icon(Icons.tune),
+            selectedIcon: const Icon(Icons.tune),
             label: 'Settings',
           ),
         ],
@@ -304,7 +301,7 @@ class _OnlineTabState extends State<_OnlineTab>
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: pagePadding,
         children: [
           ListenableBuilder(
             listenable: _current,
@@ -353,54 +350,17 @@ class _OnlineTabState extends State<_OnlineTab>
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       ?note,
-                      AqiTile(
-                        aqi: hasData ? m.aqi : null,
-                        caption: 'Last hour average',
-                      ),
-                      const SizedBox(height: 12),
-                      _MetricGrid(
-                        tiles: [
-                          MetricTile(
-                            label: 'PM2.5',
-                            value: hasData
-                                ? formatNumber(m.pm25, digits: 1)
-                                : '--',
-                            unit: 'µg/m³',
-                          ),
-                          MetricTile(
-                            label: 'PM10',
-                            value: hasData
-                                ? formatNumber(m.pm10, digits: 1)
-                                : '--',
-                            unit: 'µg/m³',
-                          ),
-                          MetricTile(
-                            label: 'PM1',
-                            value: hasData
-                                ? formatNumber(m.pm1, digits: 1)
-                                : '--',
-                            unit: 'µg/m³',
-                          ),
-                          MetricTile(
-                            label: 'Temperature',
-                            value: hasData
-                                ? formatNumber(m.temperature, digits: 1)
-                                : '--',
-                            unit: '°C',
-                          ),
-                          MetricTile(
-                            label: 'Humidity',
-                            value: hasData ? formatNumber(m.humidity) : '--',
-                            unit: '%',
-                          ),
-                          MetricTile(
-                            label: 'Feels like',
-                            value: hasData
-                                ? formatNumber(m.heatIndex, digits: 1)
-                                : '--',
-                            unit: '°C',
-                          ),
-                        ],
+                      AqiTile(aqi: hasData ? m.aqi : null),
+                      const SizedBox(height: 16),
+                      MetricGrid(
+                        tiles: metricTiles(
+                          pm25: hasData ? m.pm25 : null,
+                          pm10: hasData ? m.pm10 : null,
+                          pm1: hasData ? m.pm1 : null,
+                          temperature: hasData ? m.temperature : null,
+                          humidity: hasData ? m.humidity : null,
+                          heatIndex: hasData ? m.heatIndex : null,
+                        ),
                       ),
                     ],
                   );
@@ -408,22 +368,29 @@ class _OnlineTabState extends State<_OnlineTab>
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          Text('AQI history', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          SegmentedButton<String>(
-            segments: [
-              for (final entry in _timelines.entries)
-                ButtonSegment(value: entry.key, label: Text(entry.value)),
-            ],
-            selected: {_timeline},
-            onSelectionChanged: (selection) =>
-                setState(() => _timeline = selection.first),
-          ),
-          const SizedBox(height: 16),
-          ListenableBuilder(
-            listenable: _history,
-            builder: (context, _) => SoftSwitcher(child: _historyBody()),
+          const SectionLabel('History'),
+          SoftCard(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  segments: [
+                    for (final entry in _timelines.entries)
+                      ButtonSegment(value: entry.key, label: Text(entry.value)),
+                  ],
+                  selected: {_timeline},
+                  onSelectionChanged: (selection) =>
+                      setState(() => _timeline = selection.first),
+                ),
+                const SizedBox(height: 18),
+                ListenableBuilder(
+                  listenable: _history,
+                  builder: (context, _) => SoftSwitcher(child: _historyBody()),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -436,15 +403,6 @@ class _OnlineTabState extends State<_OnlineTab>
 class _CurrentSkeleton extends StatelessWidget {
   const _CurrentSkeleton();
 
-  static const _tiles = [
-    ('PM2.5', 'µg/m³'),
-    ('PM10', 'µg/m³'),
-    ('PM1', 'µg/m³'),
-    ('Temperature', '°C'),
-    ('Humidity', '%'),
-    ('Feels like', '°C'),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Skeleton(
@@ -452,19 +410,12 @@ class _CurrentSkeleton extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SkeletonShape(
-            radius: 20,
-            child: AqiTile(aqi: null, caption: 'Last hour average'),
-          ),
-          const SizedBox(height: 12),
-          _MetricGrid(
+          const SkeletonShape(radius: 28, child: AqiTile(aqi: null)),
+          const SizedBox(height: 16),
+          MetricGrid(
             tiles: [
-              for (final (label, unit) in _tiles)
-                SkeletonShape(
-                  radius: 18,
-                  inset: const EdgeInsets.all(4),
-                  child: MetricTile(label: label, value: '00.0', unit: unit),
-                ),
+              for (final tile in metricTiles())
+                SkeletonShape(radius: 20, child: tile),
             ],
           ),
         ],
@@ -476,41 +427,6 @@ class _CurrentSkeleton extends StatelessWidget {
 String _message(Object? error) => error is ApiException
     ? error.message
     : 'Could not load data. Check your connection.';
-
-class _MetricGrid extends StatelessWidget {
-  const _MetricGrid({required this.tiles});
-
-  final List<Widget> tiles;
-
-  @override
-  Widget build(BuildContext context) {
-    // Size tiles from their content rather than a fixed aspect ratio, so large
-    // accessibility text sizes don't overflow them.
-    final theme = Theme.of(context);
-    final scaler = MediaQuery.textScalerOf(context);
-    double lineHeight(TextStyle? style) {
-      final size = style?.fontSize ?? 14;
-      return scaler.scale(size) * (style?.height ?? 1.2);
-    }
-
-    final extent =
-        8 + // Card margin
-        28 + // MetricTile padding
-        lineHeight(theme.textTheme.labelMedium) +
-        4 +
-        lineHeight(theme.textTheme.titleLarge) +
-        4; // rounding slack
-    return GridView(
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisExtent: extent,
-      ),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: tiles,
-    );
-  }
-}
 
 class _AqiChart extends StatelessWidget {
   const _AqiChart({super.key, required this.slots});
@@ -593,15 +509,21 @@ class _AqiChart extends StatelessWidget {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: leftAxisWidth,
-                getTitlesWidget: (value, meta) => SideTitleWidget(
-                  meta: meta,
-                  child: Text(
-                    meta.formattedValue,
-                    style: axisStyle,
-                    maxLines: 1,
-                    softWrap: false,
-                  ),
-                ),
+                // Skip the off-grid top and bottom edge labels, which would
+                // crowd the nearest gridline label.
+                getTitlesWidget: (value, meta) =>
+                    (value == meta.max || value == meta.min) &&
+                        value % meta.appliedInterval != 0
+                    ? const SizedBox.shrink()
+                    : SideTitleWidget(
+                        meta: meta,
+                        child: Text(
+                          meta.formattedValue,
+                          style: axisStyle,
+                          maxLines: 1,
+                          softWrap: false,
+                        ),
+                      ),
               ),
             ),
             bottomTitles: AxisTitles(
@@ -739,87 +661,75 @@ class _LiveTabState extends State<_LiveTab> with AutomaticKeepAliveClientMixin {
       builder: (context, _) {
         final live =
             _session != null && ble.isConnectedTo(widget.device.deviceId);
-        if (!live) {
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              EmptyView(
-                icon: Icons.bluetooth,
-                title: 'Live readings',
-                message:
-                    'Connect over Bluetooth to see a new reading from the monitor every 20 seconds.',
-                action: FilledButton.icon(
-                  onPressed: _starting ? null : _start,
-                  icon: const Icon(Icons.bluetooth_connected),
-                  label: Text(_starting ? 'Connecting…' : 'Connect'),
-                ),
-              ),
-              InlineError(_error),
-            ],
-          );
-        }
-        final reading = _latest;
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            AqiTile(
-              aqi: reading?.aqi,
-              caption: _receivedAt == null
-                  ? 'Waiting for a sample…'
-                  : 'Live · ${DateFormat.Hms().format(_receivedAt!)}',
-            ),
-            const SizedBox(height: 8),
-            _MetricGrid(
-              tiles: [
-                MetricTile(
-                  label: 'PM2.5',
-                  value: formatNumber(reading?.pm25),
-                  unit: 'µg/m³',
-                ),
-                MetricTile(
-                  label: 'PM10',
-                  value: formatNumber(reading?.pm10),
-                  unit: 'µg/m³',
-                ),
-                MetricTile(
-                  label: 'PM1',
-                  value: formatNumber(reading?.pm1),
-                  unit: 'µg/m³',
-                ),
-                MetricTile(
-                  label: 'Temperature',
-                  value: formatNumber(reading?.temperature, digits: 1),
-                  unit: '°C',
-                ),
-                MetricTile(
-                  label: 'Humidity',
-                  value: formatNumber(reading?.humidity),
-                  unit: '%',
-                ),
-                MetricTile(
-                  label: 'Feels like',
-                  value: formatNumber(reading?.heatIndex, digits: 1),
-                  unit: '°C',
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Instant readings; the Online tab shows the averages uploaded every 10 minutes.',
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: () async {
-                _stop();
-                await ble.disconnect();
-                if (mounted) setState(() {});
-              },
-              icon: const Icon(Icons.bluetooth_disabled),
-              label: const Text('Disconnect'),
-            ),
-          ],
-        );
+        return SoftSwitcher(child: live ? _liveView(ble) : _connectView());
       },
+    );
+  }
+
+  Widget _connectView() {
+    return ListView(
+      key: const ValueKey('connect'),
+      padding: pagePadding,
+      children: [
+        const SizedBox(height: 32),
+        EmptyView(
+          illustration: const MonitorIllustration(),
+          title: 'See it live',
+          message:
+              "Connect over Bluetooth and you'll get a fresh reading every 20 seconds while you're nearby.",
+          action: FilledButton.icon(
+            onPressed: _starting ? null : _start,
+            icon: const Icon(Icons.bluetooth_connected),
+            label: Text(_starting ? 'Connecting…' : 'Connect'),
+          ),
+        ),
+        InlineError(_error),
+      ],
+    );
+  }
+
+  Widget _liveView(BleConnectionManager ble) {
+    final reading = _latest;
+    return ListView(
+      key: const ValueKey('live'),
+      padding: pagePadding,
+      children: [
+        AqiTile(
+          aqi: reading?.aqi,
+          caption: _receivedAt == null
+              ? 'Waiting for a sample…'
+              : 'Live · ${DateFormat.Hms().format(_receivedAt!)}',
+        ),
+        const SizedBox(height: 8),
+        MetricGrid(
+          tiles: metricTiles(
+            pm25: reading?.pm25,
+            pm10: reading?.pm10,
+            pm1: reading?.pm1,
+            temperature: reading?.temperature,
+            humidity: reading?.humidity,
+            heatIndex: reading?.heatIndex,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'These are instant readings. Overview shows the averages uploaded every 10 minutes.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: () async {
+            _stop();
+            await ble.disconnect();
+            if (mounted) setState(() {});
+          },
+          icon: const Icon(Icons.bluetooth_disabled),
+          label: const Text('Disconnect'),
+        ),
+      ],
     );
   }
 }

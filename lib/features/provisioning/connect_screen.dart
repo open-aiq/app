@@ -6,6 +6,9 @@ import '../../ble/discovery.dart';
 import '../../ble/protocol.dart';
 import '../../services.dart';
 import '../../widgets/aiq_app_bar.dart';
+import '../../widgets/monitor_illustration.dart';
+import '../../widgets/sections.dart';
+import '../../widgets/soft_card.dart';
 import '../../widgets/states.dart';
 
 /// Finds a monitor in pairing mode and opens a secure BLE session to it.
@@ -147,96 +150,134 @@ class _ConnectScreenState extends State<ConnectScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AiqAppBar(title: widget.title),
-      body: SafeArea(
-        child: _connectingTo != null
-            ? LoadingView(
-                message:
-                    'Connecting to $_connectingTo…\n\nWhen asked, enter the 6-digit code shown on the monitor.',
-              )
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Card.outlined(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Put the monitor in pairing mode',
-                            style: theme.textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Hold both buttons on the monitor for 3 seconds until its screen shows PAIRING. '
-                            'Bluetooth stays on for 5 minutes.\n\n'
-                            'Development board without buttons: type BTN:PAIR in the serial monitor.',
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  InlineError(_error),
-                  const SizedBox(height: 8),
-                  if (_accessorySetup == null)
-                    const LoadingView(message: 'Checking Bluetooth…')
-                  else if (_accessorySetup!) ...[
-                    FilledButton.icon(
-                      onPressed: _pickWithAccessorySetup,
-                      icon: const Icon(Icons.bluetooth_searching),
-                      label: const Text('Find a new monitor'),
-                    ),
-                    if (_found.isNotEmpty) ...[
-                      const SizedBox(height: 16),
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final Widget body;
+    if (_connectingTo != null) {
+      body = WaitingView(
+        key: const ValueKey('connecting'),
+        title: 'Connecting to $_connectingTo…',
+        message: 'When asked, enter the 6-digit code shown on the monitor.',
+      );
+    } else {
+      body = ListView(
+        key: const ValueKey('pick'),
+        padding: pagePadding,
+        children: [
+          SoftCard(
+            child: Row(
+              children: [
+                const MonitorIllustration(size: 88),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        'Monitors on this iPhone',
-                        style: theme.textTheme.titleSmall,
-                      ),
-                      for (final device in _found)
-                        ListTile(
-                          leading: const Icon(Icons.sensors),
-                          title: Text(device.name),
-                          subtitle: const Text('Must be in pairing mode'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => _connect(device),
+                        'Put it in pairing mode',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Hold both buttons for 3 seconds until the screen shows PAIRING. '
+                        'Bluetooth stays on for 5 minutes.',
+                      ),
                     ],
-                  ] else ...[
-                    FilledButton.icon(
-                      onPressed: _scanning ? null : _startScan,
-                      icon: const Icon(Icons.bluetooth_searching),
-                      label: Text(
-                        _scanning ? 'Searching…' : 'Search for monitors',
-                      ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 10, 8, 0),
+            child: Text(
+              'Development board without buttons? Type BTN:PAIR in the serial monitor.',
+              style: muted,
+            ),
+          ),
+          InlineError(_error),
+          const SizedBox(height: 20),
+          if (_accessorySetup == null)
+            Center(child: Text('Checking Bluetooth…', style: muted))
+          else if (_accessorySetup!) ...[
+            FilledButton.icon(
+              onPressed: _pickWithAccessorySetup,
+              icon: const Icon(Icons.bluetooth_searching),
+              label: const Text('Find a new monitor'),
+            ),
+            if (_found.isNotEmpty) ...[
+              const SectionLabel('Monitors on this iPhone'),
+              SectionCard(
+                children: [
+                  for (final device in _found)
+                    SectionRow(
+                      icon: const MonitorGlyph(),
+                      title: device.name,
+                      subtitle: 'Must be in pairing mode',
+                      onTap: () => _connect(device),
                     ),
-                    if (_scanning)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 12),
-                        child: LinearProgressIndicator(),
-                      ),
-                    for (final device in _found)
-                      ListTile(
-                        leading: const Icon(Icons.sensors),
-                        title: Text(device.name),
-                        subtitle: device.rssi == null
-                            ? null
-                            : Text('Signal ${device.rssi} dBm'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _connect(device),
-                      ),
-                    if (!_scanning && _found.isEmpty && _error == null)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 16),
-                        child: Text(
-                          'No monitors found yet. Check that the monitor shows PAIRING and search again.',
-                        ),
-                      ),
-                  ],
                 ],
               ),
-      ),
+            ],
+          ] else ...[
+            FilledButton.icon(
+              onPressed: _scanning ? null : _startScan,
+              icon: const Icon(Icons.bluetooth_searching),
+              label: Text(_scanning ? 'Searching…' : 'Search for monitors'),
+            ),
+            if (_scanning || _found.isNotEmpty) ...[
+              const SectionLabel('Nearby'),
+              SoftSwitcher(
+                child: _found.isEmpty
+                    ? const Skeleton(
+                        key: ValueKey('searching'),
+                        label: 'Searching for monitors',
+                        child: SectionCard(
+                          children: [
+                            SkeletonShape(
+                              child: SectionRow(
+                                icon: Icon(Icons.sensors),
+                                title: 'Open AIQ monitor',
+                                subtitle: 'Signal -60 dBm',
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : SectionCard(
+                        key: const ValueKey('found'),
+                        children: [
+                          for (final device in _found)
+                            SectionRow(
+                              icon: const MonitorGlyph(),
+                              title: device.name,
+                              subtitle: device.rssi == null
+                                  ? null
+                                  : 'Signal ${device.rssi} dBm',
+                              onTap: () => _connect(device),
+                            ),
+                        ],
+                      ),
+              ),
+            ],
+            if (!_scanning && _found.isEmpty && _error == null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 16, 8, 0),
+                child: Text(
+                  "No monitors found yet. Check it shows PAIRING, then search again.",
+                  style: muted,
+                ),
+              ),
+          ],
+        ],
+      );
+    }
+    return Scaffold(
+      appBar: AiqAppBar(title: widget.title),
+      body: SoftSwitcher(child: body),
     );
   }
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../config.dart';
 import '../../widgets/aiq_app_bar.dart';
+import '../../widgets/sections.dart';
+import '../../widgets/soft_card.dart';
 import 'account.dart';
 
 /// App-wide settings: who's signed in, how the app looks, and what version
@@ -12,90 +14,108 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final account = AccountScope.maybeOf(context)?.account;
+    final scope = AccountScope.maybeOf(context);
+    final account = scope?.account;
     return Scaffold(
       appBar: const AiqAppBar(title: 'Settings', showSettingsItem: false),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          children: [
-            _SectionTitle('Account'),
-            ListTile(
-              leading: AccountAvatar(account: account, radius: 22),
-              title: Text(account?.name ?? 'Signed in'),
-              subtitle: account?.email == null ? null : Text(account!.email!),
-            ),
-            const Divider(height: 32),
-            _SectionTitle('Appearance'),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ValueListenableBuilder<ThemeMode>(
-                valueListenable: themeModePreference,
-                builder: (context, mode, _) => SegmentedButton<ThemeMode>(
-                  segments: const [
-                    ButtonSegment(
-                      value: ThemeMode.system,
-                      icon: Icon(Icons.brightness_auto_outlined),
-                      label: Text('System'),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.light,
-                      icon: Icon(Icons.light_mode_outlined),
-                      label: Text('Light'),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.dark,
-                      icon: Icon(Icons.dark_mode_outlined),
-                      label: Text('Dark'),
-                    ),
-                  ],
-                  selected: {mode},
-                  onSelectionChanged: (selection) =>
-                      themeModePreference.value = selection.first,
+      body: ListView(
+        padding: pagePadding,
+        children: [
+          const SectionLabel('Account'),
+          SoftCard(
+            child: Row(
+              children: [
+                AccountAvatar(account: account, radius: 26),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        account?.name ?? 'Signed in',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (account?.email != null &&
+                          account!.email != account.name)
+                        Text(
+                          account.email!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Text(
-                'System follows your phone’s light or dark setting.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SectionLabel('Appearance'),
+          SoftCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ValueListenableBuilder<ThemeMode>(
+                  valueListenable: themeModePreference,
+                  builder: (context, mode, _) => SegmentedButton<ThemeMode>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(
+                        value: ThemeMode.system,
+                        icon: Icon(Icons.brightness_auto_outlined),
+                        label: Text('System'),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.light,
+                        icon: Icon(Icons.light_mode_outlined),
+                        label: Text('Light'),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.dark,
+                        icon: Icon(Icons.dark_mode_outlined),
+                        label: Text('Dark'),
+                      ),
+                    ],
+                    selected: {mode},
+                    onSelectionChanged: (selection) =>
+                        themeModePreference.value = selection.first,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 10),
+                Text(
+                  'System follows your phone’s light or dark setting.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
-            const Divider(height: 32),
-            _SectionTitle('About'),
-            const ListTile(
-              leading: Icon(Icons.info_outline),
-              title: Text('Open AIQ'),
-              subtitle: Text('Version ${AppConfig.appVersion}'),
+          ),
+          const SectionLabel('About'),
+          const SectionCard(
+            children: [
+              SectionRow(
+                icon: Icon(Icons.info_outline),
+                title: 'Open AIQ',
+                subtitle: 'Version ${AppConfig.appVersion}',
+              ),
+            ],
+          ),
+          if (scope != null) ...[
+            const SizedBox(height: 24),
+            SectionCard(
+              children: [
+                SectionRow(
+                  icon: const Icon(Icons.logout),
+                  title: 'Sign out',
+                  destructive: true,
+                  onTap: () => scope.onSignOut(context),
+                ),
+              ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Semantics(
-        header: true,
-        child: Text(
-          text,
-          style: theme.textTheme.titleSmall?.copyWith(
-            color: theme.colorScheme.primary,
-          ),
-        ),
+        ],
       ),
     );
   }
