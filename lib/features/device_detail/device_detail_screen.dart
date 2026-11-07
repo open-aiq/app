@@ -352,8 +352,8 @@ class _OnlineTabState extends State<_OnlineTab>
                       ?note,
                       AqiTile(aqi: hasData ? m.aqi : null),
                       const SizedBox(height: 16),
-                      MetricGrid(
-                        tiles: metricTiles(
+                      MetricGroups(
+                        groups: metricGroups(
                           pm25: hasData ? m.pm25 : null,
                           pm10: hasData ? m.pm10 : null,
                           pm1: hasData ? m.pm1 : null,
@@ -398,7 +398,7 @@ class _OnlineTabState extends State<_OnlineTab>
   }
 }
 
-/// First-load placeholder: the AQI tile and metric grid drawn as soft shapes
+/// First-load placeholder: the AQI tile and reading cards drawn as soft shapes
 /// from the real widgets, so the reading fades in without moving anything.
 class _CurrentSkeleton extends StatelessWidget {
   const _CurrentSkeleton();
@@ -412,12 +412,7 @@ class _CurrentSkeleton extends StatelessWidget {
         children: [
           const SkeletonShape(radius: 28, child: AqiTile(aqi: null)),
           const SizedBox(height: 16),
-          MetricGrid(
-            tiles: [
-              for (final tile in metricTiles())
-                SkeletonShape(radius: 20, child: tile),
-            ],
-          ),
+          MetricGroups(groups: metricGroups(), loading: true),
         ],
       ),
     );
@@ -701,8 +696,8 @@ class _LiveTabState extends State<_LiveTab> with AutomaticKeepAliveClientMixin {
               : 'Live · ${DateFormat.Hms().format(_receivedAt!)}',
         ),
         const SizedBox(height: 8),
-        MetricGrid(
-          tiles: metricTiles(
+        MetricGroups(
+          groups: metricGroups(
             pm25: reading?.pm25,
             pm10: reading?.pm10,
             pm1: reading?.pm1,

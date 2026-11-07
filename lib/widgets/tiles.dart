@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../aqi.dart';
 import '../theme.dart';
 import 'sections.dart';
+import 'states.dart';
 
 /// The big AQI block at the top of a monitor: the number, "AQI" and the
 /// band name, centred on the band colour. Colour never carries meaning alone.
@@ -148,111 +149,13 @@ class AqiBlock extends StatelessWidget {
   }
 }
 
-/// One reading on a soft tile: an icon bubble, the value with its unit,
-/// and the name underneath.
-class MetricTile extends StatelessWidget {
-  const MetricTile({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.unit = '',
-  });
+/// One reading for [MetricGroups].
+typedef Metric = ({IconData icon, String label, String value, String unit});
 
-  final IconData icon;
-  final String label;
-  final String value;
-  final String unit;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Semantics(
-      label: '$label $value $unit',
-      excludeSemantics: true,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: raisedSurface(scheme),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: scheme.outlineVariant),
-        ),
-        child: Row(
-          children: [
-            IconBubble(icon: Icon(icon), size: 40),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text.rich(
-                    TextSpan(
-                      text: value,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      children: [
-                        if (unit.isNotEmpty)
-                          TextSpan(
-                            text: ' $unit',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Six readings as two columns of [MetricTile]s.
-class MetricGrid extends StatelessWidget {
-  const MetricGrid({super.key, required this.tiles});
-
-  final List<Widget> tiles;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (var i = 0; i < tiles.length; i += 2) ...[
-          if (i > 0) const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: tiles[i]),
-              const SizedBox(width: 12),
-              Expanded(
-                child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox(),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-/// The six readings shown for a monitor, in a fixed order. Pass null for a
-/// value that isn't known yet; it shows as "--".
-List<MetricTile> metricTiles({
+/// The readings grouped into themed cards, one card per row: particulates,
+/// how it feels, then temperature and humidity. Pass null for values that
+/// aren't known yet; they show as "--".
+List<List<Metric>> metricGroups({
   num? pm25,
   num? pm10,
   num? pm1,
@@ -260,43 +163,204 @@ List<MetricTile> metricTiles({
   num? humidity,
   num? heatIndex,
 }) => [
-  MetricTile(
-    icon: Icons.grain,
-    label: 'PM2.5',
-    value: formatNumber(pm25, digits: 1),
-    unit: 'µg/m³',
-  ),
-  MetricTile(
-    icon: Icons.blur_on,
-    label: 'PM10',
-    value: formatNumber(pm10, digits: 1),
-    unit: 'µg/m³',
-  ),
-  MetricTile(
-    icon: Icons.bubble_chart_outlined,
-    label: 'PM1',
-    value: formatNumber(pm1, digits: 1),
-    unit: 'µg/m³',
-  ),
-  MetricTile(
-    icon: Icons.thermostat_outlined,
-    label: 'Temperature',
-    value: formatNumber(temperature, digits: 1),
-    unit: '°C',
-  ),
-  MetricTile(
-    icon: Icons.water_drop_outlined,
-    label: 'Humidity',
-    value: formatNumber(humidity),
-    unit: '%',
-  ),
-  MetricTile(
-    icon: Icons.wb_sunny_outlined,
-    label: 'Feels like',
-    value: formatNumber(heatIndex, digits: 1),
-    unit: '°C',
-  ),
+  [
+    (
+      icon: Icons.grain,
+      label: 'PM2.5',
+      value: formatNumber(pm25, digits: 1),
+      unit: 'µg/m³',
+    ),
+    (
+      icon: Icons.bubble_chart_outlined,
+      label: 'PM1',
+      value: formatNumber(pm1, digits: 1),
+      unit: 'µg/m³',
+    ),
+    (
+      icon: Icons.blur_on,
+      label: 'PM10',
+      value: formatNumber(pm10, digits: 1),
+      unit: 'µg/m³',
+    ),
+  ],
+  [
+    (
+      icon: Icons.wb_sunny_outlined,
+      label: 'Feels like',
+      value: formatNumber(heatIndex, digits: 1),
+      unit: '°C',
+    ),
+  ],
+  [
+    (
+      icon: Icons.thermostat_outlined,
+      label: 'Temperature',
+      value: formatNumber(temperature, digits: 1),
+      unit: '°C',
+    ),
+    (
+      icon: Icons.water_drop_outlined,
+      label: 'Humidity',
+      value: formatNumber(humidity),
+      unit: '%',
+    ),
+  ],
 ];
+
+/// Readings as stacked cards, one group per card. Groups with several
+/// readings sit side by side, each centred; a single reading runs across
+/// the card. With [loading], each card is drawn as a soft skeleton shape of
+/// exactly its real size.
+class MetricGroups extends StatelessWidget {
+  const MetricGroups({super.key, required this.groups, this.loading = false});
+
+  final List<List<Metric>> groups;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < groups.length; i++) ...[
+          if (i > 0) const SizedBox(height: 12),
+          loading
+              ? SkeletonShape(radius: 20, child: _GroupCard(groups[i]))
+              : _GroupCard(groups[i]),
+        ],
+      ],
+    );
+  }
+}
+
+class _GroupCard extends StatelessWidget {
+  const _GroupCard(this.metrics);
+
+  final List<Metric> metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+      decoration: BoxDecoration(
+        color: raisedSurface(scheme),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: metrics.length == 1
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: _MetricRow(metrics.single),
+            )
+          : IntrinsicHeight(
+              child: Row(
+                children: [
+                  for (var i = 0; i < metrics.length; i++) ...[
+                    if (i > 0)
+                      VerticalDivider(
+                        width: 1,
+                        indent: 6,
+                        endIndent: 6,
+                        color: scheme.outlineVariant,
+                      ),
+                    Expanded(child: _MetricColumn(metrics[i])),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+/// A reading stacked vertically: icon, value with unit, then its name.
+class _MetricColumn extends StatelessWidget {
+  const _MetricColumn(this.metric);
+
+  final Metric metric;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return Semantics(
+      label: '${metric.label} ${metric.value} ${metric.unit}',
+      excludeSemantics: true,
+      child: Column(
+        children: [
+          IconBubble(icon: Icon(metric.icon), size: 40),
+          const SizedBox(height: 10),
+          Text.rich(
+            TextSpan(
+              text: metric.value,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              children: [
+                TextSpan(
+                  text: ' ${metric.unit}',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            metric.label,
+            maxLines: 1,
+            style: theme.textTheme.labelSmall?.copyWith(color: muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A reading laid out across the card: icon, then value and name.
+class _MetricRow extends StatelessWidget {
+  const _MetricRow(this.metric);
+
+  final Metric metric;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return Semantics(
+      label: '${metric.label} ${metric.value} ${metric.unit}',
+      excludeSemantics: true,
+      child: Row(
+        children: [
+          IconBubble(icon: Icon(metric.icon), size: 40),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              metric.label,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Text.rich(
+            TextSpan(
+              text: metric.value,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              children: [
+                TextSpan(
+                  text: ' ${metric.unit}',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 String formatNumber(num? value, {int digits = 0}) =>
     value == null ? '--' : value.toStringAsFixed(digits);
