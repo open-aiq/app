@@ -23,6 +23,7 @@ import '../logs/logs_screen.dart' show LogsView;
 import '../provisioning/connect_screen.dart';
 import '../settings/device_settings_screen.dart' show DeviceSettingsView;
 import 'history_series.dart';
+import '../../tokens.g.dart';
 
 /// The sections of a monitor, in bottom-bar order.
 enum DeviceTab { overview, live, logs, settings }
@@ -566,7 +567,7 @@ class _AqiChart extends StatelessWidget {
         // Fresh data for the same range eases into place.
         duration: MediaQuery.disableAnimationsOf(context)
             ? Duration.zero
-            : const Duration(milliseconds: 800),
+            : AiqMotion.chart,
         curve: Curves.easeInOutCubic,
       ),
     );
