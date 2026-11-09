@@ -62,6 +62,8 @@ make init                  # flutter pub get + toolchain check
 make devices               # find your phone's device id
 make dev                   # run against the backend on this machine (cd ../backend && make dev)
 make dev:prod              # run against production
+make gallery               # the shared components with mock data, no sign-in
+make gallery:web           # the gallery as a static web page, for the hosted prototype
 make dev DEVICE=<id>       # pick a device when several are connected
 make verify                # format-check, analyze, test
 make build:apk             # release APK; ENV=local builds against the local backend
@@ -102,6 +104,14 @@ The tests run the protocol, the API client and the provisioning wizard against
 an in-memory device emulator ([`test/support/fake_device.dart`](test/support/fake_device.dart))
 and a mocked HTTP backend.
 
+### Look and feel
+
+Colors, radii, motion and AQI bands come from the shared design tokens in
+`docs/src/data/tokens.json`. Change them there and run `make tokens:sync` in
+`docs/`, which rewrites `lib/tokens.g.dart`. The docs site's visual playground
+page is the spec for the monitor card, the view inside a monitor and the shared
+states. `make gallery` shows the app's versions so you can compare them.
+
 ### Layout
 
 ```text
@@ -109,6 +119,9 @@ lib/
   api/            Backend client and models (Clerk bearer token, problem+json errors)
   ble/            Protocol (pure Dart), FlutterBluePlus transport, discovery, connection manager
   features/       auth, devices, device_detail (online + live), provisioning, settings, firmware, logs
-  widgets/        AQI tiles, OTA badge, loading/empty/error states
-  aqi.dart        US EPA bands, same as frontend/src/lib/aqi.js
+  gallery/        Mock-data gallery for `make gallery`
+  widgets/        Monitor card, AQI tiles, OTA badge, loading/empty/error states
+  aqi.dart        US EPA bands, from the shared design tokens
+  theme.dart      Sand & Sage theme, built from tokens.g.dart
+  tokens.g.dart   Generated from docs/src/data/tokens.json; don't edit
 ```

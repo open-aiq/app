@@ -24,7 +24,7 @@ KEYSTORE ?= $(HOME)/.config/open-aiq/upload-keystore.jks
 RELEASE_BRANCH ?= main
 DIST           ?= dist
 
-.PHONY: help init devices dev dev\:prod format\:fix format\:check lint\:check lint\:fix test verify build\:apk build\:aab build\:ios keystore clean release
+.PHONY: help init devices dev dev\:prod gallery gallery\:web format\:fix format\:check lint\:check lint\:fix test verify build\:apk build\:aab build\:ios keystore clean release
 
 ## help: Show available commands
 help:
@@ -51,6 +51,16 @@ dev:
 ## dev:prod: Run against the production backend (api.air-iq.net) — make dev:prod [DEVICE=<id>]
 dev\:prod:
 	$(FLUTTER) run $(DEVICE_FLAG) --dart-define-from-file=env/production.json
+
+## gallery: Show the shared components with mock data, no sign-in needed — make gallery [DEVICE=<id>]
+gallery:
+	$(FLUTTER) run $(DEVICE_FLAG) -t lib/main_gallery.dart
+
+## gallery:web: Build the gallery as a static web page for the hosted prototype — make gallery:web [BASE_HREF=/prototype/mobile/]
+BASE_HREF ?= /prototype/mobile/
+GALLERY_WEB_DIR ?= build/gallery_web
+gallery\:web:
+	$(FLUTTER) build web -t lib/main_gallery.dart --base-href $(BASE_HREF) --pwa-strategy=none --no-wasm-dry-run -o $(GALLERY_WEB_DIR)
 
 ## format:fix: Format Dart sources
 format\:fix:
