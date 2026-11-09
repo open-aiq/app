@@ -1,7 +1,11 @@
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 
-/// Sand & Sage: the visual style shared with the docs site (see AGENTS.md).
+import 'tokens.g.dart';
+
+/// Sand & Sage: the visual style shared with the docs site and the web
+/// dashboard (see AGENTS.md). Every color, radius and timing comes from
+/// tokens.g.dart, generated from docs/src/data/tokens.json.
 /// Warm camel and sand with sage, soft rounded surfaces, and dark values
 /// that are chosen rather than inverted.
 @immutable
@@ -42,25 +46,25 @@ class AiqPalette extends ThemeExtension<AiqPalette> {
   final Color shadow;
 
   static const light = AiqPalette(
-    accent: Color(0xFF8A5D3B),
-    sage: Color(0xFF6F7F5C),
-    ink: Color(0xFF3B2716),
-    sand: Color(0xFFF1E6D6),
-    wood: Color(0xFFC9A77C),
-    highlight: Color(0xFFF2C46D),
-    ground: Color(0x1A8A5D3B),
-    shadow: Color(0x143B2716),
+    accent: AiqBrandLight.accent,
+    sage: AiqBrandLight.sage,
+    ink: AiqBrandLight.ink,
+    sand: AiqBrandLight.sand,
+    wood: AiqBrandLight.wood,
+    highlight: AiqBrandLight.highlight,
+    ground: AiqBrandLight.ground,
+    shadow: AiqBrandLight.shadow,
   );
 
   static const dark = AiqPalette(
-    accent: Color(0xFFD6B88F),
-    sage: Color(0xFFA3B18A),
-    ink: Color(0xFFF4E9DA),
-    sand: Color(0xFF3A2C1F),
-    wood: Color(0xFF8A6A48),
-    highlight: Color(0xFFF2C46D),
-    ground: Color(0x24D6B88F),
-    shadow: Color(0x40000000),
+    accent: AiqBrandDark.accent,
+    sage: AiqBrandDark.sage,
+    ink: AiqBrandDark.ink,
+    sand: AiqBrandDark.sand,
+    wood: AiqBrandDark.wood,
+    highlight: AiqBrandDark.highlight,
+    ground: AiqBrandDark.ground,
+    shadow: AiqBrandDark.shadow,
   );
 
   static AiqPalette of(BuildContext context) =>
@@ -111,66 +115,45 @@ Color raisedSurface(ColorScheme scheme) => scheme.brightness == Brightness.dark
     : scheme.surfaceContainerLowest;
 
 /// Large radius for raised cards (`1.5rem` on the docs site).
-const cardRadius = 24.0;
+const cardRadius = AiqRadii.card;
 
 ThemeData buildTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final palette = dark ? AiqPalette.dark : AiqPalette.light;
+  final t = dark ? AiqSchemeTokens.dark : AiqSchemeTokens.light;
   final scheme =
       ColorScheme.fromSeed(
         seedColor: palette.accent,
         brightness: brightness,
       ).copyWith(
-        primary: palette.accent,
-        onPrimary: dark ? const Color(0xFF3B2716) : Colors.white,
-        primaryContainer: dark
-            ? const Color(0xFF4A3826)
-            : const Color(0xFFF1E6D6),
-        onPrimaryContainer: dark
-            ? const Color(0xFFF1E6D6)
-            : const Color(0xFF3B2716),
-        secondary: palette.sage,
-        onSecondary: dark ? const Color(0xFF1F2716) : Colors.white,
-        secondaryContainer: dark
-            ? const Color(0xFF3A4430)
-            : const Color(0xFFE1E7D6),
-        onSecondaryContainer: dark
-            ? const Color(0xFFE1E7D6)
-            : const Color(0xFF2F3A24),
-        tertiary: dark ? const Color(0xFFF2C46D) : const Color(0xFF8A6418),
-        tertiaryContainer: dark
-            ? const Color(0xFF4D3B12)
-            : const Color(0xFFFBE7BE),
-        onTertiaryContainer: dark
-            ? const Color(0xFFFBE7BE)
-            : const Color(0xFF3F2E05),
-        surface: dark ? const Color(0xFF1B1611) : const Color(0xFFFBF8F3),
-        onSurface: dark ? const Color(0xFFF4E9DA) : const Color(0xFF3B2716),
-        onSurfaceVariant: dark
-            ? const Color(0xFFCDBCA5)
-            : const Color(0xFF6B5A49),
-        surfaceContainerLowest: dark ? const Color(0xFF15110D) : Colors.white,
-        surfaceContainerLow: dark
-            ? const Color(0xFF211B15)
-            : const Color(0xFFF7F1E8),
-        surfaceContainer: dark
-            ? const Color(0xFF261F18)
-            : const Color(0xFFF3EBDF),
-        surfaceContainerHigh: dark
-            ? const Color(0xFF2E261D)
-            : const Color(0xFFEFE5D6),
-        surfaceContainerHighest: dark
-            ? const Color(0xFF372D23)
-            : const Color(0xFFEADFCD),
-        outline: dark ? const Color(0xFF8A6A48) : const Color(0xFFB3926B),
-        outlineVariant: dark
-            ? const Color(0xFF3F3327)
-            : const Color(0xFFE6D9C6),
+        primary: t.primary,
+        secondary: t.secondary,
+        onPrimary: t.onPrimary,
+        primaryContainer: t.primaryContainer,
+        onPrimaryContainer: t.onPrimaryContainer,
+        onSecondary: t.onSecondary,
+        secondaryContainer: t.secondaryContainer,
+        onSecondaryContainer: t.onSecondaryContainer,
+        tertiary: t.tertiary,
+        tertiaryContainer: t.tertiaryContainer,
+        onTertiaryContainer: t.onTertiaryContainer,
+        error: t.error,
+        onError: t.onError,
+        surface: t.surface,
+        onSurface: t.onSurface,
+        onSurfaceVariant: t.onSurfaceVariant,
+        surfaceContainerLowest: t.surfaceContainerLowest,
+        surfaceContainerLow: t.surfaceContainerLow,
+        surfaceContainer: t.surfaceContainer,
+        surfaceContainerHigh: t.surfaceContainerHigh,
+        surfaceContainerHighest: t.surfaceContainerHighest,
+        outline: t.outline,
+        outlineVariant: t.outlineVariant,
         surfaceTint: Colors.transparent,
       );
 
-  final rounded16 = RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(16),
+  final roundedLg = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(AiqRadii.lg),
   );
 
   // Typography that follows the platform font; app bar titles build on it.
@@ -215,25 +198,31 @@ ThemeData buildTheme(Brightness brightness) {
       foregroundColor: scheme.onPrimary,
       elevation: 2,
       highlightElevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AiqRadii.xl),
+      ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: scheme.surfaceContainerLowest,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AiqRadii.lg),
+      ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AiqRadii.lg),
         borderSide: BorderSide(color: scheme.outlineVariant),
       ),
     ),
-    listTileTheme: ListTileThemeData(shape: rounded16),
+    listTileTheme: ListTileThemeData(shape: roundedLg),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      shape: rounded16,
+      shape: roundedLg,
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AiqRadii.sheet),
+      ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: scheme.surfaceContainerLow,

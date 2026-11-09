@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../tokens.g.dart';
 
 class ErrorView extends StatelessWidget {
   const ErrorView({super.key, required this.message, this.onRetry});
@@ -111,7 +112,7 @@ class _SkeletonState extends State<Skeleton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1400),
+    duration: AiqMotion.pulse,
   );
 
   @override
@@ -231,7 +232,7 @@ class SoftSwitcher extends StatelessWidget {
     return AnimatedSwitcher(
       duration: MediaQuery.disableAnimationsOf(context)
           ? Duration.zero
-          : const Duration(milliseconds: 700),
+          : AiqMotion.fade,
       switchInCurve: Curves.easeInOutCubic,
       switchOutCurve: Curves.easeInOutCubic,
       layoutBuilder: (current, previous) => Stack(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../tokens.g.dart';
 
 /// The friendly air monitor from the docs: a sand body with a wood outline,
 /// a sage screen with a smiling face, and a soft ground shadow. It floats
@@ -22,7 +23,7 @@ class _MonitorIllustrationState extends State<MonitorIllustration>
     with SingleTickerProviderStateMixin {
   late final AnimationController _motion = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 3500),
+    duration: AiqMotion.float ~/ 2,
   );
 
   @override
