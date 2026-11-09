@@ -15,7 +15,7 @@ void main() {
     expect(aqiInfo(0).label, 'Good');
     expect(aqiInfo(50).label, 'Good');
     expect(aqiInfo(51).label, 'Moderate');
-    expect(aqiInfo(150).label, 'Unhealthy for Sensitive Groups');
+    expect(aqiInfo(150).label, 'Slightly Unhealthy');
     expect(aqiInfo(201).label, 'Very Unhealthy');
     expect(aqiInfo(301).label, 'Hazardous');
     expect(aqiInfo(double.nan).label, 'Unknown');
