@@ -22,7 +22,7 @@ class AppConfig {
   );
 
   /// Shown on the Settings screen. `make release` keeps it in step with pubspec.yaml.
-  static const appVersion = '0.4.1';
+  static const appVersion = '0.4.2';
 
   /// FlutterBluePlus 2.x requires declaring a license on connect. `nonprofit`
   /// covers personal, nonprofit and educational use; a for-profit organization
