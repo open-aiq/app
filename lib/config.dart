@@ -10,6 +10,12 @@ class AppConfig {
     defaultValue: 'https://api.air-iq.net/api/v1',
   );
 
+  /// The Open AIQ docs, linked from the avatar menu.
+  static const docsUrl = 'https://docs.air-iq.net';
+
+  /// The web dashboard, whose public map is linked from the avatar menu.
+  static const webUrl = 'https://open-airiq.web.app';
+
   /// Clerk publishable key of the same Clerk instance the web dashboard uses.
   static const clerkPublishableKey = String.fromEnvironment(
     'CLERK_PUBLISHABLE_KEY',

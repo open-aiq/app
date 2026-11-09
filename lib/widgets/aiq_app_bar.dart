@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../config.dart';
 import '../features/account/account.dart';
 import '../features/account/settings_screen.dart';
 import 'monitor_illustration.dart';
@@ -135,8 +137,9 @@ class _Mark extends StatelessWidget {
   }
 }
 
-/// The avatar at the right of every top bar. It opens a menu with your
-/// profile, Settings and Sign out.
+/// The avatar at the right of every top bar. Everything that isn't the screen
+/// itself lives here: your profile, the theme, Settings, the docs and map,
+/// and Sign out.
 class AccountMenuButton extends StatelessWidget {
   const AccountMenuButton({super.key, this.showSettingsItem = true});
 
@@ -148,7 +151,7 @@ class AccountMenuButton extends StatelessWidget {
     final account = scope?.account;
     final theme = Theme.of(context);
     return MenuAnchor(
-      alignmentOffset: const Offset(-180, 4),
+      alignmentOffset: const Offset(-220, 4),
       menuChildren: [
         if (account != null) ...[
           Padding(
@@ -186,6 +189,8 @@ class AccountMenuButton extends StatelessWidget {
           ),
           const Divider(height: 8),
         ],
+        const _ThemeRow(),
+        const Divider(height: 8),
         if (showSettingsItem)
           MenuItemButton(
             leadingIcon: const Icon(Icons.settings_outlined),
@@ -194,6 +199,19 @@ class AccountMenuButton extends StatelessWidget {
             ),
             child: const Text('Settings'),
           ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.menu_book_outlined),
+          trailingIcon: const Icon(Icons.open_in_new, size: 16),
+          onPressed: () => _open(AppConfig.docsUrl),
+          child: const Text('Docs'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.map_outlined),
+          trailingIcon: const Icon(Icons.open_in_new, size: 16),
+          onPressed: () => _open('${AppConfig.webUrl}/map'),
+          child: const Text('Public map'),
+        ),
+        const Divider(height: 8),
         MenuItemButton(
           leadingIcon: const Icon(Icons.logout),
           onPressed: scope == null ? null : () => scope.onSignOut(context),
@@ -205,6 +223,63 @@ class AccountMenuButton extends StatelessWidget {
         onPressed: () =>
             controller.isOpen ? controller.close() : controller.open(),
         icon: AccountAvatar(account: account),
+      ),
+    );
+  }
+}
+
+/// Opens a link in the browser, outside the app.
+Future<void> _open(String url) =>
+    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+
+/// System, Light and Dark as a compact icon row inside the avatar menu. It
+/// shares [themeModePreference] with the Settings screen, so both stay in step,
+/// and picking one keeps the menu open.
+class _ThemeRow extends StatelessWidget {
+  const _ThemeRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
+      child: SizedBox(
+        width: 240,
+        child: Row(
+          children: [
+            Expanded(child: Text('Theme', style: theme.textTheme.bodyLarge)),
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeModePreference,
+              builder: (context, mode, _) => SegmentedButton<ThemeMode>(
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    icon: Icon(Icons.brightness_auto_outlined, size: 18),
+                    tooltip: 'System',
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    icon: Icon(Icons.light_mode_outlined, size: 18),
+                    tooltip: 'Light',
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    icon: Icon(Icons.dark_mode_outlined, size: 18),
+                    tooltip: 'Dark',
+                  ),
+                ],
+                selected: {mode},
+                onSelectionChanged: (selection) =>
+                    themeModePreference.value = selection.first,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

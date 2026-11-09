@@ -9,6 +9,7 @@ import '../../widgets/states.dart';
 import '../firmware/firmware_screen.dart' show FirmwareSection;
 import '../provisioning/connect_screen.dart';
 import '../provisioning/provisioning_screen.dart' show currentPosition;
+import '../../tokens.g.dart';
 
 /// Everything the web portal can change, plus settings that live on the
 /// monitor itself and need a Bluetooth connection.
@@ -308,7 +309,7 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
           AnimatedSize(
             duration: MediaQuery.disableAnimationsOf(context)
                 ? Duration.zero
-                : const Duration(milliseconds: 300),
+                : AiqMotion.resize,
             curve: Curves.easeInOutCubic,
             child: _dirty || _saving
                 ? Padding(
