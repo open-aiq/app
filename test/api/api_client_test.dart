@@ -198,4 +198,21 @@ void main() {
     final job = await api.approveOta('abc', 'rel');
     expect(job.active, isTrue);
   });
+
+  test('deletes the account with the bearer token', () async {
+    final api = client({
+      'DELETE /api/v1/account': (_) => http.Response('', 204),
+    });
+    await api.deleteAccount();
+    expect(requests.single.headers['Authorization'], 'Bearer jwt-token');
+
+    final failing = client({
+      'DELETE /api/v1/account': (_) =>
+          json({'title': 'Couldn’t delete your sign-in', 'status': 502}, 502),
+    });
+    await expectLater(
+      failing.deleteAccount(),
+      throwsA(isA<ApiException>().having((e) => e.status, 'status', 502)),
+    );
+  });
 }

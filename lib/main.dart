@@ -6,6 +6,7 @@ import 'api/api_client.dart';
 import 'ble/connection_manager.dart';
 import 'config.dart';
 import 'features/account/account.dart';
+import 'features/account/clerk_account_actions.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/devices/device_list_screen.dart';
 import 'services.dart';
@@ -79,6 +80,7 @@ Account? _account(clerk.User? user) {
   return Account(
     name: name.isNotEmpty ? name : (user.email ?? 'Your account'),
     email: user.email,
+    username: user.username,
     imageUrl: user.hasImage == true ? user.imageUrl : null,
   );
 }
@@ -101,8 +103,8 @@ class _DismissKeyboardOnTap extends StatelessWidget {
   }
 }
 
-/// Creates the API client and BLE manager for the signed-in user and provides
-/// them to every route.
+/// Creates the API client, BLE manager and account actions for the signed-in
+/// user and provides them to every route.
 class _SignedIn extends StatefulWidget {
   const _SignedIn({required this.authState, required this.child});
 
@@ -119,9 +121,14 @@ class _SignedInState extends State<_SignedIn> {
     tokenProvider: () async => (await widget.authState.sessionToken()).jwt,
   );
   final BleConnectionManager _ble = BleConnectionManager();
+  late final ClerkAccountActions _actions = ClerkAccountActions(
+    auth: widget.authState,
+    api: _api,
+  );
 
   @override
   void dispose() {
+    _actions.dispose();
     _ble.dispose();
     // Signed out (or the session ended) while a pushed route may be open; those
     // routes need AppServices, so return to the sign-in screen.
@@ -139,6 +146,7 @@ class _SignedInState extends State<_SignedIn> {
       child: AccountScope(
         account: _account(widget.authState.user),
         onSignOut: _signOut,
+        actions: _actions,
         child: widget.child,
       ),
     );

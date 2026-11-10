@@ -150,6 +150,10 @@ class ApiClient {
 
   Future<void> deleteDevice(String id) => _request('DELETE', '/devices/$id');
 
+  /// Deletes every monitor you own (with its readings, logs and update
+  /// history), then your sign-in. `DELETE /account` answers 204.
+  Future<void> deleteAccount() => _request('DELETE', '/account');
+
   Future<CurrentReading> current(String id) async => CurrentReading.fromJson(
     _data(await _request('GET', '/devices/$id/current')),
   );
