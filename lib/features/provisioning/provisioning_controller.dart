@@ -45,6 +45,10 @@ class ProvisioningController extends ChangeNotifier {
   List<WifiNetwork> networks = const [];
   String? ip;
   bool verifyTimedOut = false;
+
+  /// The last poll for the first reading could not reach the backend (phone
+  /// offline, request timed out). Polling carries on regardless.
+  bool serverUnreachable = false;
   bool _disposed = false;
 
   Future<void> start() => _run(() async {
@@ -136,23 +140,29 @@ class ProvisioningController extends ChangeNotifier {
     final current = device;
     if (current == null) return;
     verifyTimedOut = false;
+    serverUnreachable = false;
     step = ProvisioningStep.verifying;
     _notify();
     final deadline = DateTime.now().add(verifyTimeout);
     while (!_disposed && DateTime.now().isBefore(deadline)) {
       try {
         final reading = await api.current(current.id);
+        serverUnreachable = false;
         if (reading.online) {
           step = ProvisioningStep.done;
           _notify();
           return;
         }
       } on ApiException catch (e) {
-        if (!e.isNoReadings) {
-          error = e.message;
-          _notify();
-        }
+        // The backend answered, so the connection is fine.
+        serverUnreachable = false;
+        if (!e.isNoReadings) error = e.message;
+      } catch (_) {
+        // No connection or a slow one (ClientException, TimeoutException…).
+        // Keep polling: the monitor may well be uploading in the meantime.
+        serverUnreachable = true;
       }
+      _notify();
       await Future<void>.delayed(pollInterval);
     }
     verifyTimedOut = true;
