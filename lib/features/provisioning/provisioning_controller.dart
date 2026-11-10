@@ -24,12 +24,16 @@ class ProvisioningController extends ChangeNotifier {
     required this.session,
     required this.api,
     this.pollInterval = const Duration(seconds: 5),
-    this.verifyTimeout = const Duration(minutes: 2),
+    this.verifyTimeout = const Duration(minutes: 7),
   });
 
   final AiqSession session;
   final ApiClient api;
   final Duration pollInterval;
+
+  /// How long to wait for the first reading. The monitor samples the air in a
+  /// burst every 5 minutes and uploads after one, so the first reading can
+  /// take 3 to 5 minutes; 7 leaves room for a slow WiFi join.
   final Duration verifyTimeout;
 
   ProvisioningStep step = ProvisioningStep.inspecting;
@@ -49,6 +53,10 @@ class ProvisioningController extends ChangeNotifier {
   /// The last poll for the first reading could not reach the backend (phone
   /// offline, request timed out). Polling carries on regardless.
   bool serverUnreachable = false;
+
+  /// How long the current wait for the first reading has lasted, as of the
+  /// last poll.
+  Duration verifyElapsed = Duration.zero;
   bool _disposed = false;
 
   Future<void> start() => _run(() async {
@@ -141,10 +149,11 @@ class ProvisioningController extends ChangeNotifier {
     if (current == null) return;
     verifyTimedOut = false;
     serverUnreachable = false;
+    verifyElapsed = Duration.zero;
     step = ProvisioningStep.verifying;
     _notify();
-    final deadline = DateTime.now().add(verifyTimeout);
-    while (!_disposed && DateTime.now().isBefore(deadline)) {
+    final waited = Stopwatch()..start();
+    while (!_disposed && waited.elapsed < verifyTimeout) {
       try {
         final reading = await api.current(current.id);
         serverUnreachable = false;
@@ -162,9 +171,11 @@ class ProvisioningController extends ChangeNotifier {
         // Keep polling: the monitor may well be uploading in the meantime.
         serverUnreachable = true;
       }
+      verifyElapsed = waited.elapsed;
       _notify();
       await Future<void>.delayed(pollInterval);
     }
+    verifyElapsed = waited.elapsed;
     verifyTimedOut = true;
     _notify();
   }

@@ -93,13 +93,16 @@ class FakeBackend {
   );
 }
 
-ProvisioningController _controller(FakeDevice device, FakeBackend backend) =>
-    ProvisioningController(
-      session: AiqSession(device),
-      api: backend.client(),
-      pollInterval: const Duration(milliseconds: 5),
-      verifyTimeout: const Duration(milliseconds: 300),
-    );
+ProvisioningController _controller(
+  FakeDevice device,
+  FakeBackend backend, {
+  Duration verifyTimeout = const Duration(milliseconds: 300),
+}) => ProvisioningController(
+  session: AiqSession(device),
+  api: backend.client(),
+  pollInterval: const Duration(milliseconds: 5),
+  verifyTimeout: verifyTimeout,
+);
 
 void main() {
   test(
@@ -188,6 +191,10 @@ void main() {
     await controller.submitLocation();
     expect(controller.step, ProvisioningStep.verifying);
     expect(controller.verifyTimedOut, isTrue);
+    expect(
+      controller.verifyElapsed,
+      greaterThanOrEqualTo(const Duration(milliseconds: 300)),
+    );
 
     await controller.rotateAndResendKey();
     expect(controller.error, isNull);
@@ -232,6 +239,39 @@ void main() {
     expect(controller.serverUnreachable, isTrue);
     expect(backend.currentCalls, greaterThan(1));
     expect(controller.error, isNull, reason: 'not a failure, still trying');
+  });
+
+  test('waits 7 minutes for the first reading by default', () {
+    final controller = ProvisioningController(
+      session: AiqSession(FakeDevice()),
+      api: FakeBackend().client(),
+    );
+    expect(controller.verifyTimeout, const Duration(minutes: 7));
+  });
+
+  test('a late first reading still finishes setup', () async {
+    // The monitor uploads after its first sampling burst, so the reading
+    // shows up many polls in. The window is scaled down; nothing waits long.
+    final device = FakeDevice();
+    final backend = FakeBackend(onlineAfter: 40);
+    final controller = _controller(
+      device,
+      backend,
+      verifyTimeout: const Duration(seconds: 5),
+    );
+    await controller.start();
+    await controller.register(name: 'Balcony');
+    await controller.submitWifi('Home', 'pw');
+    await controller.submitLocation();
+
+    expect(controller.step, ProvisioningStep.done);
+    expect(controller.verifyTimedOut, isFalse);
+    expect(backend.currentCalls, 40);
+    // 39 pauses of 5 ms between the polls.
+    expect(
+      controller.verifyElapsed,
+      greaterThanOrEqualTo(const Duration(milliseconds: 150)),
+    );
   });
 
   test('rejects an empty SSID without talking to the device', () async {
