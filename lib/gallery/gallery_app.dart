@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../api/models.dart';
+import '../ble/connection_manager.dart';
 import '../features/account/account.dart';
+import '../features/account/account_screen.dart';
+import '../features/account/settings_screen.dart';
+import '../features/device_detail/device_detail_screen.dart';
+import '../features/devices/device_list_screen.dart';
+import '../services.dart';
 import '../theme.dart';
 import '../tokens.g.dart';
 import '../widgets/aiq_app_bar.dart';
@@ -10,27 +15,64 @@ import '../widgets/monitor_illustration.dart';
 import '../widgets/sections.dart';
 import '../widgets/states.dart';
 import '../widgets/tiles.dart';
+import 'fixtures.dart';
+import 'mock_account_actions.dart';
+import 'mock_api.dart';
+
+/// The screens the gallery can open, by their `?screen=` key. The hosted
+/// prototype's Screen picker (`frontend/prototype/index.html`) uses the same
+/// keys, so keep the two in step.
+const galleryScreens = [
+  'gallery',
+  'monitors',
+  'monitor',
+  'monitor-new',
+  'monitor-logs',
+  'monitor-settings',
+  'settings',
+  'account',
+];
 
 /// The shared components with mock data, section by section in the same
 /// order as the docs site's visual playground page, so you can hold the two
 /// side by side. Run it with `make gallery`; it needs no sign-in or network.
 ///
+/// With a [screen] key it opens one of the app's real screens instead, on the
+/// mock backend in `mock_api.dart` and the mock account in
+/// `mock_account_actions.dart`. Bluetooth isn't faked, so Bluetooth actions
+/// fail calmly here.
+///
 /// It uses the real top bar and avatar menu with a sample account, so the
 /// theme, Settings and links work here just as they do in the app.
 class GalleryApp extends StatefulWidget {
-  const GalleryApp({super.key, this.themeMode = ThemeMode.system});
+  const GalleryApp({
+    super.key,
+    this.themeMode = ThemeMode.system,
+    this.screen,
+    this.delay = const Duration(milliseconds: 300),
+  });
 
   final ThemeMode themeMode;
+
+  /// A key from [galleryScreens]. Null or unknown opens the gallery.
+  final String? screen;
+
+  /// How long mock requests and account changes take.
+  final Duration delay;
 
   @override
   State<GalleryApp> createState() => _GalleryAppState();
 }
 
 class _GalleryAppState extends State<GalleryApp> {
-  static const _account = Account(
-    name: 'Riley Review',
-    email: 'riley@example.com',
+  final _messenger = GlobalKey<ScaffoldMessengerState>();
+  late final _api = MockApi(delay: widget.delay);
+  late final _actions = MockAccountActions(
+    api: _api.client,
+    messenger: _messenger,
+    delay: widget.delay,
   );
+  final _ble = BleConnectionManager();
 
   @override
   void initState() {
@@ -38,26 +80,86 @@ class _GalleryAppState extends State<GalleryApp> {
     themeModePreference.value = widget.themeMode;
   }
 
+  @override
+  void dispose() {
+    _actions.dispose();
+    _ble.dispose();
+    super.dispose();
+  }
+
+  Account get _account => Account(
+    name: 'Riley Review',
+    email: _actions.emails.where((e) => e.isPrimary).firstOrNull?.address,
+    username: _actions.username,
+  );
+
   Future<void> _signOut(BuildContext context) async {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       const SnackBar(content: Text('The gallery keeps you signed in.')),
     );
   }
 
+  /// The screens under the one you asked for, as you'd reach it in the app,
+  /// so the back button works and nothing pops to an empty page.
+  List<Widget> _stack() {
+    final garden = fixtureDevice('dev-garden');
+    return switch (widget.screen) {
+      'monitors' => const [DeviceListScreen()],
+      'monitor' => [
+        const DeviceListScreen(),
+        DeviceDetailScreen(device: garden),
+      ],
+      'monitor-new' => [
+        const DeviceListScreen(),
+        DeviceDetailScreen(device: fixtureDevice('dev-new')),
+      ],
+      'monitor-logs' => [
+        const DeviceListScreen(),
+        DeviceDetailScreen(device: garden, initialTab: DeviceTab.logs),
+      ],
+      'monitor-settings' => [
+        const DeviceListScreen(),
+        DeviceDetailScreen(device: garden, initialTab: DeviceTab.settings),
+      ],
+      'settings' => const [DeviceListScreen(), SettingsScreen()],
+      'account' => const [
+        DeviceListScreen(),
+        SettingsScreen(),
+        AccountScreen(),
+      ],
+      _ => const [GalleryScreen()],
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AccountScope(
-      account: _account,
-      onSignOut: _signOut,
-      child: ValueListenableBuilder<ThemeMode>(
-        valueListenable: themeModePreference,
-        builder: (context, mode, _) => MaterialApp(
-          title: 'Open AIQ gallery',
-          debugShowCheckedModeBanner: false,
-          theme: buildTheme(Brightness.light),
-          darkTheme: buildTheme(Brightness.dark),
-          themeMode: mode,
-          home: const GalleryScreen(),
+    return AppServices(
+      api: _api.client,
+      ble: _ble,
+      child: ListenableBuilder(
+        listenable: _actions,
+        builder: (context, child) => AccountScope(
+          account: _account,
+          onSignOut: _signOut,
+          actions: _actions,
+          child: child!,
+        ),
+        child: ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeModePreference,
+          builder: (context, mode, _) => MaterialApp(
+            title: 'Open AIQ gallery',
+            debugShowCheckedModeBanner: false,
+            scaffoldMessengerKey: _messenger,
+            theme: buildTheme(Brightness.light),
+            darkTheme: buildTheme(Brightness.dark),
+            themeMode: mode,
+            onGenerateInitialRoutes: (_) => [
+              for (final screen in _stack())
+                MaterialPageRoute<void>(builder: (_) => screen),
+            ],
+            onGenerateRoute: (_) =>
+                MaterialPageRoute<void>(builder: (_) => const GalleryScreen()),
+          ),
         ),
       ),
     );
@@ -69,7 +171,7 @@ class GalleryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final seen = DateTime.now().subtract(const Duration(minutes: 2));
+    final kitchen = fixtureReading('dev-kitchen')!.metrics;
     return Scaffold(
       appBar: const AiqAppBar(
         title: 'Gallery',
@@ -79,34 +181,33 @@ class GalleryScreen extends StatelessWidget {
         padding: pagePadding,
         children: [
           const SectionLabel('Monitor card'),
-          MonitorCard(device: _garden, reading: _reading(32, seen)),
+          MonitorCard(
+            device: fixtureDevice('dev-garden'),
+            reading: fixtureReading('dev-garden'),
+          ),
           _gap,
-          const MonitorCard(device: _kitchen, loading: true),
+          MonitorCard(device: fixtureDevice('dev-kitchen'), loading: true),
           _gap,
-          const MonitorCard(device: _newSensor),
+          MonitorCard(device: fixtureDevice('dev-new')),
           _gap,
           MonitorCard(
-            device: _ridge,
-            reading: _reading(
-              340,
-              DateTime.now().subtract(const Duration(hours: 3)),
-              online: false,
-            ),
+            device: fixtureDevice('dev-bushfire'),
+            reading: fixtureReading('dev-bushfire'),
           ),
           _gap,
           const MonitorCardSkeleton(),
           const SizedBox(height: 32),
           const SectionLabel('Inside the monitor'),
-          const AqiTile(aqi: 78, caption: 'Averages over the last hour'),
+          AqiTile(aqi: kitchen.aqi, caption: 'Averages over the last hour'),
           _gap,
           MetricGroups(
             groups: metricGroups(
-              pm25: 23.8,
-              pm10: 33.8,
-              pm1: 16.2,
-              temperature: 22.1,
-              humidity: 46,
-              heatIndex: 22.7,
+              pm25: kitchen.pm25,
+              pm10: kitchen.pm10,
+              pm1: kitchen.pm1,
+              temperature: kitchen.temperature,
+              humidity: kitchen.humidity,
+              heatIndex: kitchen.heatIndex,
             ),
           ),
           _gap,
@@ -132,7 +233,10 @@ class GalleryScreen extends StatelessWidget {
                 'show up here.',
           ),
           const ErrorView(message: 'We couldn’t load your monitors.'),
-          QuietNote(updatedAt: seen, onRetry: () {}),
+          QuietNote(
+            updatedAt: DateTime.now().subtract(const Duration(minutes: 2)),
+            onRetry: () {},
+          ),
           _gap,
           const Skeleton(child: SkeletonBlock(height: 96, radius: AiqRadii.xl)),
         ],
@@ -142,59 +246,3 @@ class GalleryScreen extends StatelessWidget {
 }
 
 const _gap = SizedBox(height: 16);
-
-const _garden = Device(
-  id: 'dev-garden',
-  deviceId: 'dev_garden000000a1b2c3d4e5f6',
-  name: 'Back garden',
-  isOutdoor: true,
-  isPublic: true,
-  isLocationPublic: true,
-  firmwareVersion: '0.6.2',
-  ota: OtaSummary(status: 'up_to_date', version: '0.6.2'),
-);
-
-const _kitchen = Device(
-  id: 'dev-kitchen',
-  deviceId: 'dev_kitchen00000a1b2c3d4e5f6',
-  name: 'Kitchen',
-  isOutdoor: false,
-  isPublic: false,
-  isLocationPublic: false,
-);
-
-const _newSensor = Device(
-  id: 'dev-new',
-  deviceId: 'dev_new000000000a1b2c3d4e5f6',
-  name: 'New sensor',
-  isOutdoor: false,
-  isPublic: false,
-  isLocationPublic: false,
-  ota: OtaSummary(status: 'update_available', version: '0.6.2'),
-);
-
-const _ridge = Device(
-  id: 'dev-ridge',
-  deviceId: 'dev_ridge0000000a1b2c3d4e5f6',
-  name: 'Ridge lookout',
-  isOutdoor: true,
-  isPublic: true,
-  isLocationPublic: true,
-);
-
-CurrentReading _reading(int aqi, DateTime seen, {bool online = true}) {
-  return CurrentReading(
-    online: online,
-    lastSeen: seen,
-    sampleCount: 58,
-    metrics: Metrics(
-      aqi: aqi,
-      pm25: aqi / 5.5,
-      pm10: aqi / 3.9,
-      pm1: aqi / 8,
-      temperature: 22.4,
-      humidity: 64,
-      heatIndex: 23.0,
-    ),
-  );
-}

@@ -15,6 +15,9 @@ Flutter companion app for Open AIQ air monitors (ESP32-S3 Rust firmware).
   progress while the monitor downloads and installs.
 - **Device logs.** Warnings, errors and important events uploaded by the
   monitor.
+- **Your account.** Change your username, manage the ways you sign in (email
+  addresses, Google, GitHub and a password) and delete your account, which also
+  deletes every monitor and its data.
 
 ## Configuration
 
@@ -112,14 +115,45 @@ Colors, radii, motion and AQI bands come from the shared design tokens in
 page is the spec for the monitor card, the view inside a monitor and the shared
 states. `make gallery` shows the app's versions so you can compare them.
 
+### Gallery and prototype
+
+`make gallery` runs [`lib/main_gallery.dart`](lib/main_gallery.dart) with no
+sign-in or network. It opens on the component gallery, and it can also open the
+app's real screens on mock data: monitors from
+[`lib/gallery/fixtures.dart`](lib/gallery/fixtures.dart) (the same ones as the
+web's `make review`), a mock backend in
+[`lib/gallery/mock_api.dart`](lib/gallery/mock_api.dart) and a sample account in
+[`lib/gallery/mock_account_actions.dart`](lib/gallery/mock_account_actions.dart).
+Changes you make there last until you reload. Bluetooth isn't faked, so
+Bluetooth actions won't find a monitor.
+
+`make gallery:web` builds it for the hosted prototype, whose Mobile view loads
+`mobile/?screen=<key>`:
+
+| Key | Screen |
+| --- | --- |
+| `gallery` (or none) | The component gallery |
+| `monitors` | My monitors |
+| `monitor` | Back garden, Overview |
+| `monitor-new` | New sensor, which has no readings yet |
+| `monitor-logs` | Back garden, Logs |
+| `monitor-settings` | Back garden, Settings |
+| `settings` | App settings |
+| `account` | Your account: username, sign-in methods and deleting it |
+
+The keys live in `galleryScreens` in
+[`lib/gallery/gallery_app.dart`](lib/gallery/gallery_app.dart). The prototype's
+Screen picker (`frontend/prototype/index.html`) uses the same keys, so change
+them together.
+
 ### Layout
 
 ```text
 lib/
   api/            Backend client and models (Clerk bearer token, problem+json errors)
   ble/            Protocol (pure Dart), FlutterBluePlus transport, discovery, connection manager
-  features/       auth, devices, device_detail (online + live), provisioning, settings, firmware, logs
-  gallery/        Mock-data gallery for `make gallery`
+  features/       account, auth, devices, device_detail (online + live), provisioning, settings, firmware, logs
+  gallery/        Mock-data gallery and prototype screens for `make gallery`
   widgets/        Monitor card, AQI tiles, OTA badge, loading/empty/error states
   aqi.dart        US EPA bands, from the shared design tokens
   theme.dart      Sand & Sage theme, built from tokens.g.dart
