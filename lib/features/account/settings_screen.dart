@@ -5,6 +5,7 @@ import '../../widgets/aiq_app_bar.dart';
 import '../../widgets/sections.dart';
 import '../../widgets/soft_card.dart';
 import 'account.dart';
+import 'account_screen.dart';
 
 /// App-wide settings: who's signed in, how the app looks, and what version
 /// is running. Per-monitor settings live on each monitor's own screen.
@@ -22,34 +23,50 @@ class SettingsScreen extends StatelessWidget {
         padding: pagePadding,
         children: [
           const SectionLabel('Account'),
-          SoftCard(
-            child: Row(
-              children: [
-                AccountAvatar(account: account, radius: 26),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        account?.name ?? 'Signed in',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (account?.email != null &&
-                          account!.email != account.name)
-                        Text(
-                          account.email!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+          SectionCard(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    AccountAvatar(account: account, radius: 26),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            account?.name ?? 'Signed in',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                    ],
+                          if (account?.email != null &&
+                              account!.email != account.name)
+                            Text(
+                              account.email!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (scope?.actions != null)
+                SectionRow(
+                  icon: const Icon(Icons.manage_accounts_outlined),
+                  title: 'Manage account',
+                  subtitle: 'Username, sign-in methods and more',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AccountScreen(),
+                    ),
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
           const SectionLabel('Appearance'),
           SoftCard(
