@@ -2,6 +2,8 @@ import 'package:clerk_auth/clerk_auth.dart' as clerk;
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/wind_glyph.dart';
+
 /// Sign in or sign up with the same Clerk account used on the web dashboard.
 ///
 /// Clerk's prebuilt `ClerkAuthentication` widget has fixed sizes and ordering,
@@ -271,8 +273,7 @@ class _SignInScreenState extends State<SignInScreen> {
                         children: [
                           Align(
                             alignment: Alignment.centerLeft,
-                            child: Icon(
-                              Icons.air,
+                            child: WindGlyph(
                               size: 40,
                               color: Theme.of(context).colorScheme.primary,
                               semanticLabel: 'Open AIQ',

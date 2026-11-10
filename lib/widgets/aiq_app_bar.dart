@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../features/account/account.dart';
 import '../features/account/settings_screen.dart';
-import 'monitor_illustration.dart';
+import 'wind_glyph.dart';
 
 /// Who is signed in and how to sign out, for the avatar menu on every screen.
 /// Provided once above the Navigator in `main.dart`.
@@ -13,6 +13,7 @@ class AccountScope extends InheritedWidget {
     super.key,
     required this.account,
     required this.onSignOut,
+    this.actions,
     required super.child,
   });
 
@@ -21,15 +22,21 @@ class AccountScope extends InheritedWidget {
   /// Asks for confirmation, then signs out.
   final Future<void> Function(BuildContext context) onSignOut;
 
+  /// Username, sign-in methods and account deletion, for the account screen.
+  /// Null where they aren't available, which hides "Manage account".
+  final AccountActions? actions;
+
   static AccountScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<AccountScope>();
 
   @override
   bool updateShouldNotify(AccountScope old) =>
-      account != old.account || onSignOut != old.onSignOut;
+      account != old.account ||
+      onSignOut != old.onSignOut ||
+      actions != old.actions;
 }
 
-/// The one top bar used across the app: a round back button (or the monitor
+/// The one top bar used across the app: a round back button (or the wind
 /// mark on the first screen), a title with an optional subtitle, an optional
 /// status chip, and the avatar menu at the far right.
 class AiqAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -117,7 +124,7 @@ class _BackButton extends StatelessWidget {
   }
 }
 
-/// The app's monitor mark, in place of a back button on the first screen.
+/// The Open AIQ wind mark, in place of a back button on the first screen.
 class _Mark extends StatelessWidget {
   const _Mark();
 
@@ -132,7 +139,7 @@ class _Mark extends StatelessWidget {
         color: scheme.secondaryContainer,
         shape: BoxShape.circle,
       ),
-      child: MonitorGlyph(size: 22, color: scheme.onSecondaryContainer),
+      child: WindGlyph(size: 22, color: scheme.onSecondaryContainer),
     );
   }
 }
