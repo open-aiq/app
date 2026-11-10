@@ -117,6 +117,7 @@ class SectionRow extends StatelessWidget {
     required this.icon,
     required this.title,
     this.subtitle,
+    this.subtitleStyle,
     this.trailing,
     this.onTap,
     this.destructive = false,
@@ -126,6 +127,9 @@ class SectionRow extends StatelessWidget {
   final Widget icon;
   final String title;
   final String? subtitle;
+
+  /// Merged into the subtitle's style, e.g. a monospace font for an ID.
+  final TextStyle? subtitleStyle;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool destructive;
@@ -165,9 +169,9 @@ class SectionRow extends StatelessWidget {
                     if (subtitle != null)
                       Text(
                         subtitle!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: scheme.onSurfaceVariant)
+                            .merge(subtitleStyle),
                       ),
                   ],
                 ),

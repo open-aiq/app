@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../api/api_client.dart';
 import '../../api/models.dart';
@@ -63,6 +64,11 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
   void _snack(String message) => ScaffoldMessenger.of(
     context,
   ).showSnackBar(SnackBar(content: Text(message)));
+
+  Future<void> _copyDeviceId() async {
+    await Clipboard.setData(ClipboardData(text: _device.deviceId));
+    if (mounted) _snack('Device ID copied');
+  }
 
   Future<void> _save() async {
     final name = _name.text.trim();
@@ -277,6 +283,21 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
                     counterText: '',
                   ),
                   onChanged: (_) => setState(() {}),
+                ),
+              ),
+              SectionRow(
+                icon: const Icon(Icons.tag),
+                title: 'Device ID',
+                subtitle: _device.deviceId,
+                subtitleStyle: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontFamilyFallback: ['Menlo', 'Courier'],
+                ),
+                onTap: _copyDeviceId,
+                trailing: IconButton(
+                  tooltip: 'Copy device ID',
+                  onPressed: _copyDeviceId,
+                  icon: const Icon(Icons.copy_outlined, size: 20),
                 ),
               ),
               SectionSwitch(
