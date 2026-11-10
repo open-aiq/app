@@ -89,11 +89,12 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
         isPublic: _public,
         isLocationPublic: _public && _locationPublic,
       );
+      if (!mounted) return;
       setState(() => _device = updated);
       widget.onChanged(updated);
       _snack('Settings saved');
-    } on ApiException catch (e) {
-      setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -250,6 +251,7 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    setState(() => _error = null);
     try {
       if (services.ble.isConnectedTo(_device.deviceId)) {
         await services.ble.session!.clear().catchError((_) {});
@@ -257,8 +259,8 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
       }
       await services.api.deleteDevice(_device.id);
       if (mounted) widget.onDeleted();
-    } on ApiException catch (e) {
-      setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyError(e));
     }
   }
 

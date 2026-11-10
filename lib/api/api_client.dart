@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -54,6 +55,22 @@ class ApiException implements Exception {
   @override
   String toString() => 'ApiException($status, $message)';
 }
+
+/// What to show when the backend can't be reached at all.
+const unreachableMessage =
+    "Can't reach the server. Check your connection and try again.";
+
+/// A message for anything an [ApiClient] call can throw: the backend's own
+/// wording for an [ApiException], [unreachableMessage] when the request never
+/// got an answer (no connection, timed out), and [fallback] for the rest.
+String friendlyError(
+  Object error, {
+  String fallback = 'Something went wrong. Please try again.',
+}) => switch (error) {
+  ApiException() => error.message,
+  http.ClientException() || TimeoutException() => unreachableMessage,
+  _ => fallback,
+};
 
 /// Typed client for the Clerk-authenticated backend API (same as the web dashboard).
 class ApiClient {
