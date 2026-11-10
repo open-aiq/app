@@ -672,7 +672,7 @@ class _LiveTabState extends State<_LiveTab> with AutomaticKeepAliveClientMixin {
           illustration: const MonitorIllustration(),
           title: 'See it live',
           message:
-              "Connect over Bluetooth and you'll get a fresh reading every 20 seconds while you're nearby.",
+              "Connect over Bluetooth to watch it live while you're nearby. Temperature and humidity refresh every 20 seconds, particles and AQI every 5 minutes.",
           action: FilledButton.icon(
             onPressed: _starting ? null : _start,
             icon: const Icon(Icons.bluetooth_connected),
