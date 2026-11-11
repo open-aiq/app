@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -67,21 +68,56 @@ class AccessorySetup {
   }
 }
 
+/// A permission Android still needs before a scan can find anything.
+enum ScanBlocker {
+  /// "Nearby devices" (scan and connect), on Android 12 and newer.
+  bluetooth,
+
+  /// Location, which Android 11 and older require for any Bluetooth scan.
+  location,
+}
+
+/// Android 11, the last version that scans through the location permission.
+const _lastLocationScanSdk = 30;
+
+/// Which permission is missing for a scan on Android API level [sdkInt], or
+/// null when scanning can go ahead.
+///
+/// Android 11 and older report the Bluetooth permissions as granted and need
+/// location instead; without it a scan runs but silently finds nothing.
+/// Android 12 and newer need only the Bluetooth permissions.
+ScanBlocker? scanBlocker({
+  required int sdkInt,
+  required bool bluetoothGranted,
+  required bool locationGranted,
+}) {
+  if (sdkInt <= _lastLocationScanSdk) {
+    return locationGranted ? null : ScanBlocker.location;
+  }
+  return bluetoothGranted ? null : ScanBlocker.bluetooth;
+}
+
 /// Classic BLE scan for devices advertising the Nordic UART Service.
 class BleScanner {
-  /// Requests the runtime permissions scanning needs on Android 12+ and older.
-  static Future<bool> ensurePermissions() async {
-    if (!Platform.isAndroid) return true;
+  /// Requests the runtime permissions scanning needs on Android. Returns what
+  /// is still missing, or null when the scan can start.
+  static Future<ScanBlocker?> ensurePermissions() async {
+    if (!Platform.isAndroid) return null;
     final statuses = await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
       Permission.locationWhenInUse,
     ].request();
-    final scan = statuses[Permission.bluetoothScan];
-    final connect = statuses[Permission.bluetoothConnect];
-    // Location is only required on Android 11 and older; scan/connect are
-    // reported as granted there.
-    return (scan?.isGranted ?? false) && (connect?.isGranted ?? false);
+    bool granted(Permission permission) =>
+        statuses[permission]?.isGranted ?? false;
+    final android = await DeviceInfoPlugin().androidInfo;
+    return scanBlocker(
+      sdkInt: android.version.sdkInt,
+      bluetoothGranted:
+          granted(Permission.bluetoothScan) &&
+          granted(Permission.bluetoothConnect),
+      locationGranted: granted(Permission.locationWhenInUse),
+    );
   }
 
   /// Streams the devices seen so far, strongest first, for [duration].

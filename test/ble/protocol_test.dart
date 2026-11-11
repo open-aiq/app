@@ -147,14 +147,61 @@ void main() {
     });
 
     test('times out when the device does not answer', () async {
+      device.silent = true;
       await expectLater(
         session.expect(
-          'NOPE',
-          (line) => line == 'NEVER',
+          'PING',
+          (line) => line == 'PONG',
           timeout: const Duration(milliseconds: 50),
         ),
-        throwsA(isA<BleProtocolException>()),
+        throwsA(
+          isA<BleProtocolException>().having(
+            (e) => e.message,
+            'message',
+            contains('did not answer'),
+          ),
+        ),
       );
+    });
+
+    test('an unknown command is refused right away', () async {
+      await expectLater(
+        session.expect('NOPE', (line) => line == 'NEVER'),
+        throwsA(
+          isA<BleProtocolException>().having(
+            (e) => e.message,
+            'message',
+            'Device error: UNKNOWN_COMMAND',
+          ),
+        ),
+      );
+      // The session is still usable afterwards.
+      await session.ping();
+    });
+
+    test('coordinates out of range are refused when set', () async {
+      await expectLater(
+        session.setLocation(91, 67),
+        throwsA(
+          isA<BleProtocolException>().having(
+            (e) => e.message,
+            'message',
+            'Device error: INVALID_LAT',
+          ),
+        ),
+      );
+      await expectLater(
+        session.setLocation(24.86, 181),
+        throwsA(
+          isA<BleProtocolException>().having(
+            (e) => e.message,
+            'message',
+            'Device error: INVALID_LON',
+          ),
+        ),
+      );
+      expect(device.lon, 0, reason: 'the bad longitude was not stored');
+      expect(device.received, isNot(contains('LON:67.000000')));
     });
 
     test('streams live readings', () async {

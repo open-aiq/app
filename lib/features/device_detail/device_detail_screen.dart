@@ -623,6 +623,9 @@ class _LiveTabState extends State<_LiveTab> with AutomaticKeepAliveClientMixin {
       }
       final session = ble.session!;
       _session = session;
+      // After a dropped link the old subscription is still around; let it go
+      // before listening to the new session.
+      await _readings?.cancel();
       _readings = session.readings.listen((reading) {
         if (mounted) {
           setState(() {
