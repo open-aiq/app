@@ -37,7 +37,13 @@ class BleConnectionManager extends ChangeNotifier {
     }
     _transport = transport;
     _session = session;
-    _disconnects = transport.disconnected.listen((_) => _clear());
+    // The link dropped by itself: still close the transport, so its stream
+    // controller and notification subscription don't leak.
+    _disconnects = transport.disconnected.listen((_) {
+      if (identical(_transport, transport)) {
+        unawaited(_clear()?.close().catchError((_) {}));
+      }
+    });
     _notify();
     return session;
   }
@@ -52,18 +58,20 @@ class BleConnectionManager extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
-    final transport = _transport;
-    _clear();
-    await transport?.close();
+    await _clear()?.close();
   }
 
-  void _clear() {
+  /// Forgets the current connection and hands back its transport, which the
+  /// caller must close.
+  BleLineTransport? _clear() {
+    final transport = _transport;
     _disconnects?.cancel();
     _disconnects = null;
     _transport = null;
     _session = null;
     _info = null;
     _notify();
+    return transport;
   }
 
   void _notify() {
