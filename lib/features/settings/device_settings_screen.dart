@@ -237,7 +237,26 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
     await _withDevice('Resetting', (session) async {
       await session.clear();
       await ble.disconnect();
-      _snack('Monitor reset');
+      if (!mounted) return;
+      // The monitor forgot this phone, but the phone still remembers the
+      // monitor, and that stale pairing blocks the next one.
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Monitor reset'),
+          content: const Text(
+            "One more step before you pair again: open your phone's "
+            'Bluetooth settings and forget this monitor. Otherwise the '
+            "phone keeps the old pairing and can't reconnect.",
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Got it'),
+            ),
+          ],
+        ),
+      );
     });
   }
 
