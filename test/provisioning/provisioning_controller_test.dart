@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:app/api/api_client.dart';
@@ -16,12 +17,18 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
 );
 
 /// Fake backend: one optional existing device; `current` is NoReadings until
-/// [onlineAfter] polls.
+/// [onlineAfter] polls. The first [unreachableFor] polls never reach it: they
+/// fail the way a phone without a connection does.
 class FakeBackend {
-  FakeBackend({this.existingDeviceId, this.onlineAfter = 1});
+  FakeBackend({
+    this.existingDeviceId,
+    this.onlineAfter = 1,
+    this.unreachableFor = 0,
+  });
 
   final String? existingDeviceId;
   final int onlineAfter;
+  final int unreachableFor;
   int currentCalls = 0;
   int registered = 0;
 
@@ -64,6 +71,13 @@ class FakeBackend {
       }
       if (route.endsWith('/current')) {
         currentCalls++;
+        if (currentCalls <= unreachableFor) {
+          // Alternate the two errors a dead connection produces.
+          if (currentCalls.isOdd) {
+            throw http.ClientException('Failed host lookup', request.url);
+          }
+          throw TimeoutException('No response from the server');
+        }
         if (currentCalls < onlineAfter) {
           return _json({
             'type': 'https://docs.air-iq.net/reference/errors/#no-readings',
@@ -79,13 +93,16 @@ class FakeBackend {
   );
 }
 
-ProvisioningController _controller(FakeDevice device, FakeBackend backend) =>
-    ProvisioningController(
-      session: AiqSession(device),
-      api: backend.client(),
-      pollInterval: const Duration(milliseconds: 5),
-      verifyTimeout: const Duration(milliseconds: 300),
-    );
+ProvisioningController _controller(
+  FakeDevice device,
+  FakeBackend backend, {
+  Duration verifyTimeout = const Duration(milliseconds: 300),
+}) => ProvisioningController(
+  session: AiqSession(device),
+  api: backend.client(),
+  pollInterval: const Duration(milliseconds: 5),
+  verifyTimeout: verifyTimeout,
+);
 
 void main() {
   test(
@@ -174,10 +191,87 @@ void main() {
     await controller.submitLocation();
     expect(controller.step, ProvisioningStep.verifying);
     expect(controller.verifyTimedOut, isTrue);
+    expect(
+      controller.verifyElapsed,
+      greaterThanOrEqualTo(const Duration(milliseconds: 300)),
+    );
 
     await controller.rotateAndResendKey();
     expect(controller.error, isNull);
     expect(device.saved['devkey'], 'sk_rotated');
+  });
+
+  test(
+    'keeps polling through network errors until the reading arrives',
+    () async {
+      final device = FakeDevice();
+      final backend = FakeBackend(unreachableFor: 4, onlineAfter: 6);
+      final controller = _controller(device, backend);
+      final unreachableSeen = <bool>[];
+      controller.addListener(
+        () => unreachableSeen.add(controller.serverUnreachable),
+      );
+      await controller.start();
+      await controller.register(name: 'Balcony');
+      await controller.submitWifi('Home', 'pw');
+      await controller.submitLocation();
+
+      expect(controller.step, ProvisioningStep.done);
+      expect(controller.verifyTimedOut, isFalse);
+      expect(backend.currentCalls, 6);
+      expect(unreachableSeen, contains(true), reason: 'shown while offline');
+      expect(controller.serverUnreachable, isFalse);
+      expect(controller.error, isNull);
+    },
+  );
+
+  test('times out when the server stays unreachable', () async {
+    final device = FakeDevice();
+    final backend = FakeBackend(unreachableFor: 1 << 30);
+    final controller = _controller(device, backend);
+    await controller.start();
+    await controller.register(name: 'Balcony');
+    await controller.submitWifi('Home', 'pw');
+    await controller.submitLocation();
+
+    expect(controller.step, ProvisioningStep.verifying);
+    expect(controller.verifyTimedOut, isTrue);
+    expect(controller.serverUnreachable, isTrue);
+    expect(backend.currentCalls, greaterThan(1));
+    expect(controller.error, isNull, reason: 'not a failure, still trying');
+  });
+
+  test('waits 7 minutes for the first reading by default', () {
+    final controller = ProvisioningController(
+      session: AiqSession(FakeDevice()),
+      api: FakeBackend().client(),
+    );
+    expect(controller.verifyTimeout, const Duration(minutes: 7));
+  });
+
+  test('a late first reading still finishes setup', () async {
+    // The monitor uploads after its first sampling burst, so the reading
+    // shows up many polls in. The window is scaled down; nothing waits long.
+    final device = FakeDevice();
+    final backend = FakeBackend(onlineAfter: 40);
+    final controller = _controller(
+      device,
+      backend,
+      verifyTimeout: const Duration(seconds: 5),
+    );
+    await controller.start();
+    await controller.register(name: 'Balcony');
+    await controller.submitWifi('Home', 'pw');
+    await controller.submitLocation();
+
+    expect(controller.step, ProvisioningStep.done);
+    expect(controller.verifyTimedOut, isFalse);
+    expect(backend.currentCalls, 40);
+    // 39 pauses of 5 ms between the polls.
+    expect(
+      controller.verifyElapsed,
+      greaterThanOrEqualTo(const Duration(milliseconds: 150)),
+    );
   });
 
   test('rejects an empty SSID without talking to the device', () async {
