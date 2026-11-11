@@ -17,6 +17,9 @@ class FakeDevice implements LineTransport {
   bool wifiJoins = true;
   bool live = false;
 
+  /// Takes commands but never answers, like a monitor that went out of range.
+  bool silent = false;
+
   /// Saved (NVS) copies, updated on SAVE.
   Map<String, String> saved = {};
 
@@ -34,9 +37,20 @@ class FakeDevice implements LineTransport {
     );
   }
 
+  /// A coordinate within ±[limit] degrees, as the firmware accepts it
+  /// (device/src/ble/mod.rs `coordinate`), or null.
+  static double? _coordinate(String value, double limit) {
+    final degrees = double.tryParse(value.trim());
+    if (degrees == null || !degrees.isFinite || degrees.abs() > limit) {
+      return null;
+    }
+    return degrees;
+  }
+
   @override
   Future<void> writeLine(String line) async {
     received.add(line);
+    if (silent) return;
     switch (line) {
       case 'PING':
         _send('PONG');
@@ -105,11 +119,21 @@ class FakeDevice implements LineTransport {
             password = value;
             _send('OK: password set');
           case 'LAT':
-            lat = double.parse(value);
-            _send('OK: LAT set to $value');
+            final degrees = _coordinate(value, 90);
+            if (degrees == null) {
+              _send('ERROR:INVALID_LAT');
+            } else {
+              lat = degrees;
+              _send('OK: LAT set to ${degrees.toStringAsFixed(6)}');
+            }
           case 'LON':
-            lon = double.parse(value);
-            _send('OK: LON set to $value');
+            final degrees = _coordinate(value, 180);
+            if (degrees == null) {
+              _send('ERROR:INVALID_LON');
+            } else {
+              lon = degrees;
+              _send('OK: LON set to ${degrees.toStringAsFixed(6)}');
+            }
           case 'DEVID':
             deviceId = value;
             _send('OK: DEVID set to $value');
@@ -117,7 +141,7 @@ class FakeDevice implements LineTransport {
             deviceKey = value;
             _send('OK: device key set');
           default:
-            _send('echo: $line');
+            _send('ERROR:UNKNOWN_COMMAND');
         }
     }
   }
