@@ -132,7 +132,7 @@ void main() {
     expect(controller.device!.name, 'Kitchen');
     expect(backend.registered, 0);
     expect(
-      device.received.where((line) => line.startsWith('DEVKEY')),
+      device.received.where((line) => line.startsWith(Setter.deviceKey)),
       isEmpty,
       reason: 'existing credentials are kept',
     );
@@ -158,7 +158,7 @@ void main() {
     expect(controller.step, ProvisioningStep.wifi);
     expect(controller.error, contains('could not join'));
     expect(
-      device.received.where((line) => line.startsWith('LAT')),
+      device.received.where((line) => line.startsWith(Setter.latitude)),
       isEmpty,
       reason: 'skipped location',
     );
