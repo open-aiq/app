@@ -537,19 +537,39 @@ class _VerifyStep extends StatelessWidget {
 
   final ProvisioningController controller;
 
+  /// What to say while waiting, calmer the longer it takes.
+  String get _waitingMessage {
+    if (controller.serverUnreachable) {
+      return "We can't reach the server right now, so we're still trying. "
+          "Check this phone's connection. Your monitor carries on by itself.";
+    }
+    if (controller.verifyElapsed >= const Duration(minutes: 2)) {
+      return "Still sampling the air. Nothing's wrong: the first reading "
+          'takes the longest, up to about 5 minutes.';
+    }
+    return "WiFi's connected. Your monitor samples the air before it sends "
+        'anything, so this can take a few minutes.';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!controller.verifyTimedOut) {
-      return const WaitingView(
+      return WaitingView(
         title: 'Waiting for the first reading…',
-        message: "WiFi's connected. This usually takes under a minute.",
+        message: _waitingMessage,
       );
     }
+    final ip = controller.ip == null ? '' : ' (${controller.ip})';
     return _StepScaffold(
       title: 'Still waiting for the monitor',
-      subtitle:
-          'The monitor joined WiFi${controller.ip == null ? '' : ' (${controller.ip})'} but no reading has arrived yet. '
-          'Check that the network has internet access. If the monitor was set up before, its key may be out of date.',
+      subtitle: controller.serverUnreachable
+          ? "We couldn't reach the server to check for a reading. "
+                "Check this phone's connection, then keep waiting. "
+                "Your monitor may already be uploading."
+          : 'The monitor joined WiFi$ip, but no reading has arrived yet. '
+                "Don't worry, it's usually one of two things: the monitor is "
+                'still sampling the air, or its WiFi network has no internet '
+                'access.',
       children: [
         InlineError(controller.error),
         _actionGap,
@@ -559,6 +579,19 @@ class _VerifyStep extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Finish anyway'),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'Set this monitor up before? As a last resort, its device key may '
+          'be out of date. Sending a new one replaces the old key.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        TextButton(
           onPressed: controller.busy
               ? null
               : () async {
@@ -566,10 +599,6 @@ class _VerifyStep extends StatelessWidget {
                   await controller.retryVerify();
                 },
           child: const Text('Send a new device key'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Finish anyway'),
         ),
       ],
     );

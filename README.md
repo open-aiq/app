@@ -5,9 +5,12 @@ Flutter companion app for Open AIQ air monitors (ESP32-S3 Rust firmware).
 - **Sign in** with the same Clerk account as the web dashboard.
 - **Add a monitor over Bluetooth.** Pair with a passkey, register it in your
   account if it is new (the device key goes straight to the monitor), send WiFi
-  and the phone's location, then wait for the first reading online.
-- **Live readings.** A new sample every 20 s over BLE, alongside the online
-  view (last-hour average, history chart).
+  and the phone's location, then wait for the first reading online. That can
+  take 3 to 5 minutes, because the monitor samples the air first.
+- **Live readings.** Over BLE, temperature and humidity refresh every 20 s.
+  Particles and AQI change every 5 minutes, because the monitor rests its
+  particle sensor between 60 s sampling bursts. The online view sits alongside
+  (last-hour average, history chart).
 - **Every portal setting.** Name, outdoor, public, location sharing, rotate key
   (re-provisioned in the same step) and delete. Settings stored on the monitor
   itself: WiFi, location, details and factory reset.
