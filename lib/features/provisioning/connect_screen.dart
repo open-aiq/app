@@ -91,10 +91,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _error = null;
       _found = const [];
     });
-    if (!await BleScanner.ensurePermissions()) {
+    final blocker = await BleScanner.ensurePermissions();
+    if (!mounted) return;
+    if (blocker != null) {
       setState(
-        () => _error =
+        () => _error = switch (blocker) {
+          ScanBlocker.bluetooth =>
             'Allow Bluetooth ("Nearby devices") access to find the monitor.',
+          ScanBlocker.location =>
+            'This version of Android needs location access to find nearby '
+                "monitors. Allow it, then scan again. If your phone doesn't "
+                'ask, turn it on for this app in Settings.',
+        },
       );
       return;
     }

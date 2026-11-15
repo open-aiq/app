@@ -79,8 +79,8 @@ class _FirmwareSectionState extends State<FirmwareSection> {
         await services.ble.session!.otaCheck().catchError((_) {});
       }
       await _load();
-    } on ApiException catch (e) {
-      setState(() => _actionError = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _actionError = friendlyError(e));
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -94,12 +94,14 @@ class _FirmwareSectionState extends State<FirmwareSection> {
     try {
       await AppServices.of(context).api.cancelOta(widget.device.id);
       await _load();
-    } on ApiException catch (e) {
-      setState(
-        () => _actionError = e.isConflict
-            ? 'The monitor has already started updating.'
-            : e.message,
-      );
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _actionError = e is ApiException && e.isConflict
+              ? 'The monitor has already started updating.'
+              : friendlyError(e),
+        );
+      }
     } finally {
       if (mounted) setState(() => _acting = false);
     }

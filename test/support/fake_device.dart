@@ -17,6 +17,9 @@ class FakeDevice implements LineTransport {
   bool wifiJoins = true;
   bool live = false;
 
+  /// Takes commands but never answers, like a monitor that went out of range.
+  bool silent = false;
+
   /// Saved (NVS) copies, updated on SAVE.
   Map<String, String> saved = {};
 
@@ -25,99 +28,128 @@ class FakeDevice implements LineTransport {
 
   void _send(String line) => scheduleMicrotask(() => _out.add(line));
 
+  /// `OK: <KEY> set to <value>`, as the firmware answers a setter.
+  static String _okSet(String key, String value) =>
+      '${Reply.okSet(key)} set to $value';
+
   /// Simulates a 20 s sample while live mode is on.
   void emitReading() {
     if (!live) return;
     _send(
-      'READING:{"pm1_0":3,"pm2_5":12,"pm10_0":18,"aqi":57,"temperature":24.5,'
+      '${Reply.prefix(Reply.reading)}{"pm1_0":3,"pm2_5":12,"pm10_0":18,"aqi":57,"temperature":24.5,'
       '"humidity":40.0,"heat_index":24.9,"uptime_ms":20000}',
     );
+  }
+
+  /// A coordinate within ±[limit] degrees, as the firmware accepts it
+  /// (device/src/ble/mod.rs `coordinate`), or null.
+  static double? _coordinate(String value, double limit) {
+    final degrees = double.tryParse(value.trim());
+    if (degrees == null || !degrees.isFinite || degrees.abs() > limit) {
+      return null;
+    }
+    return degrees;
   }
 
   @override
   Future<void> writeLine(String line) async {
     received.add(line);
+    if (silent) return;
     switch (line) {
-      case 'PING':
-        _send('PONG');
-      case 'INFO':
+      case Command.ping:
+        _send(Reply.pong);
+      case Command.info:
+        final keySet = (saved['devkey'] ?? deviceKey).isNotEmpty;
         for (final reply in [
-          'INFO_BEGIN',
-          'FW:0.1.0',
-          'MAC:AABBCCDDEEFF',
-          'DEVID:${saved['devid'] ?? deviceId}',
-          'DEVKEY_SET:${(saved['devkey'] ?? deviceKey).isEmpty ? 0 : 1}',
-          'WIFI:disconnected',
-          'SSID:$ssid',
-          'IP:0.0.0.0',
-          'LAST_UPLOAD:none',
-          'INFO_END',
+          Reply.infoBegin,
+          Reply.field(Reply.firmware, '0.1.0'),
+          Reply.field(Reply.mac, 'AABBCCDDEEFF'),
+          Reply.field(Reply.deviceId, saved['devid'] ?? deviceId),
+          Reply.field(
+            Reply.deviceKeySet,
+            keySet ? Reply.flagSet : Reply.flagUnset,
+          ),
+          Reply.field(Reply.wifi, Reply.disconnected),
+          Reply.field(Reply.ssid, ssid),
+          Reply.field(Reply.ip, Reply.noIp),
+          Reply.field(Reply.lastUpload, Reply.none),
+          Reply.infoEnd,
         ]) {
           _send(reply);
         }
-      case 'SCAN':
+      case Command.scan:
         for (final reply in [
-          'SCAN_BEGIN',
-          'NET:-48,secured,Home, Upstairs',
-          'NET:-80,open,Cafe',
-          'SCAN_END',
+          Reply.scanBegin,
+          Reply.field(Reply.network, '-48,${Reply.secured},Home, Upstairs'),
+          Reply.field(Reply.network, '-80,${Reply.open},Cafe'),
+          Reply.scanEnd,
         ]) {
           _send(reply);
         }
-      case 'SAVE':
+      case Command.save:
         saved = {
           'ssid': ssid,
           'pass': password,
           'devid': deviceId,
           'devkey': deviceKey,
         };
-        _send('SAVE_BEGIN');
-        _send('WIFI_CONNECTING');
+        _send(Reply.saveBegin);
+        _send(Reply.wifiConnecting);
         if (wifiJoins) {
-          _send('SAVE_OK');
-          _send('IP:192.168.1.20');
+          _send(Reply.saveOk);
+          _send(Reply.field(Reply.ip, '192.168.1.20'));
         } else {
-          _send('SAVE_FAILED:WIFI');
+          _send(Reply.field(Reply.saveFailed, Reply.failedWifi));
         }
-        _send('SAVE_END');
-      case 'CLEAR':
+        _send(Reply.saveEnd);
+      case Command.clear:
         saved = {};
-        _send('CLEARED all stored config');
-      case 'LIVE:ON':
+        _send(Reply.cleared);
+      case Command.liveOn:
         live = true;
-        _send('OK: live on');
-      case 'LIVE:OFF':
+        _send(Reply.okLiveOn);
+      case Command.liveOff:
         live = false;
-        _send('OK: live off');
-      case 'READ':
-        _send('ERROR:NO_READING');
-      case 'OTA:CHECK':
-        _send('OK: ota check');
+        _send(Reply.okLiveOff);
+      case Command.read:
+        _send('$errorPrefix${DeviceErrorCode.noReading}');
+      case Command.otaCheck:
+        _send(Reply.okOtaCheck);
       default:
-        final colon = line.indexOf(':');
+        final colon = line.indexOf(separator);
         final key = colon < 0 ? line : line.substring(0, colon);
         final value = colon < 0 ? '' : line.substring(colon + 1);
         switch (key) {
-          case 'SSID':
+          case Setter.ssid:
             ssid = value;
-            _send('OK: SSID set to $value');
-          case 'PASS':
+            _send(_okSet(Setter.ssid, value));
+          case Setter.password:
             password = value;
-            _send('OK: password set');
-          case 'LAT':
-            lat = double.parse(value);
-            _send('OK: LAT set to $value');
-          case 'LON':
-            lon = double.parse(value);
-            _send('OK: LON set to $value');
-          case 'DEVID':
+            _send(Reply.okPasswordSet);
+          case Setter.latitude:
+            final degrees = _coordinate(value, 90);
+            if (degrees == null) {
+              _send('$errorPrefix${DeviceErrorCode.invalidLat}');
+            } else {
+              lat = degrees;
+              _send(_okSet(Setter.latitude, degrees.toStringAsFixed(6)));
+            }
+          case Setter.longitude:
+            final degrees = _coordinate(value, 180);
+            if (degrees == null) {
+              _send('$errorPrefix${DeviceErrorCode.invalidLon}');
+            } else {
+              lon = degrees;
+              _send(_okSet(Setter.longitude, degrees.toStringAsFixed(6)));
+            }
+          case Setter.deviceId:
             deviceId = value;
-            _send('OK: DEVID set to $value');
-          case 'DEVKEY':
+            _send(_okSet(Setter.deviceId, value));
+          case Setter.deviceKey:
             deviceKey = value;
-            _send('OK: device key set');
+            _send(Reply.okDeviceKeySet);
           default:
-            _send('echo: $line');
+            _send('$errorPrefix${DeviceErrorCode.unknownCommand}');
         }
     }
   }

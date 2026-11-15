@@ -53,7 +53,7 @@ void main() {
       expect(networks.first.bars, 4);
       expect(networks.last.bars, 0);
       expect(
-        () => parseScan(['ERROR:SCAN']),
+        () => parseScan(['$errorPrefix${DeviceErrorCode.scan}']),
         throwsA(isA<BleProtocolException>()),
       );
     });
@@ -118,7 +118,10 @@ void main() {
         'devid': 'dev_1',
         'devkey': 'sk_secret',
       });
-      expect(device.received, contains('LAT:24.860700'));
+      expect(
+        device.received,
+        contains(Reply.field(Setter.latitude, '24.860700')),
+      );
       final info = await session.info();
       expect(info.deviceId, 'dev_1');
       expect(info.deviceKeySet, isTrue);
@@ -131,7 +134,7 @@ void main() {
         session.info(),
       ]);
       expect((results[1] as List<WifiNetwork>).length, 2);
-      expect(device.received, ['INFO', 'SCAN', 'INFO']);
+      expect(device.received, [Command.info, Command.scan, Command.info]);
     });
 
     test('device errors surface as exceptions', () async {
@@ -141,19 +144,72 @@ void main() {
         reason: 'READ before the first sample returns ERROR:NO_READING',
       );
       await expectLater(
-        session.expect('READ', (line) => line.startsWith('READING:')),
+        session.expect(
+          Command.read,
+          (line) => line.startsWith(Reply.prefix(Reply.reading)),
+        ),
         throwsA(isA<BleProtocolException>()),
       );
     });
 
     test('times out when the device does not answer', () async {
+      device.silent = true;
       await expectLater(
         session.expect(
-          'NOPE',
-          (line) => line == 'NEVER',
+          Command.ping,
+          (line) => line == Reply.pong,
           timeout: const Duration(milliseconds: 50),
         ),
-        throwsA(isA<BleProtocolException>()),
+        throwsA(
+          isA<BleProtocolException>().having(
+            (e) => e.message,
+            'message',
+            contains('did not answer'),
+          ),
+        ),
+      );
+    });
+
+    test('an unknown command is refused right away', () async {
+      await expectLater(
+        session.expect('NOPE', (line) => line == 'NEVER'),
+        throwsA(
+          isA<BleProtocolException>().having(
+            (e) => e.message,
+            'message',
+            'Device error: ${DeviceErrorCode.unknownCommand}',
+          ),
+        ),
+      );
+      // The session is still usable afterwards.
+      await session.ping();
+    });
+
+    test('coordinates out of range are refused when set', () async {
+      await expectLater(
+        session.setLocation(91, 67),
+        throwsA(
+          isA<BleProtocolException>().having(
+            (e) => e.message,
+            'message',
+            'Device error: ${DeviceErrorCode.invalidLat}',
+          ),
+        ),
+      );
+      await expectLater(
+        session.setLocation(24.86, 181),
+        throwsA(
+          isA<BleProtocolException>().having(
+            (e) => e.message,
+            'message',
+            'Device error: ${DeviceErrorCode.invalidLon}',
+          ),
+        ),
+      );
+      expect(device.lon, 0, reason: 'the bad longitude was not stored');
+      expect(
+        device.received,
+        isNot(contains(Reply.field(Setter.longitude, '67.000000'))),
       );
     });
 
@@ -165,5 +221,88 @@ void main() {
       await session.setLive(false);
       expect(device.live, isFalse);
     });
+  });
+
+  // The one place the wire strings are spelled out. If this fails, the
+  // firmware (device/src/ble/wire.rs) and the protocol docs need the same
+  // change.
+  test('wire format is unchanged', () {
+    const lines = {
+      Command.ping: 'PING',
+      Command.status: 'STATUS',
+      Command.info: 'INFO',
+      Command.scan: 'SCAN',
+      Command.read: 'READ',
+      Command.liveOn: 'LIVE:ON',
+      Command.liveOff: 'LIVE:OFF',
+      Command.otaCheck: 'OTA:CHECK',
+      Command.save: 'SAVE',
+      Command.load: 'LOAD',
+      Command.clear: 'CLEAR',
+      Setter.ssid: 'SSID',
+      Setter.password: 'PASS',
+      Setter.latitude: 'LAT',
+      Setter.longitude: 'LON',
+      Setter.deviceId: 'DEVID',
+      Setter.deviceKey: 'DEVKEY',
+      Reply.pong: 'PONG',
+      Reply.infoBegin: 'INFO_BEGIN',
+      Reply.infoEnd: 'INFO_END',
+      Reply.scanBegin: 'SCAN_BEGIN',
+      Reply.scanEnd: 'SCAN_END',
+      Reply.saveBegin: 'SAVE_BEGIN',
+      Reply.saveEnd: 'SAVE_END',
+      Reply.loadBegin: 'LOAD_BEGIN',
+      Reply.loadEnd: 'LOAD_END',
+      Reply.wifiConnecting: 'WIFI_CONNECTING',
+      Reply.saveOk: 'SAVE_OK',
+      Reply.cleared: 'CLEARED all stored config',
+      Reply.okLiveOn: 'OK: live on',
+      Reply.okLiveOff: 'OK: live off',
+      Reply.okOtaCheck: 'OK: ota check',
+      Reply.okPasswordSet: 'OK: password set',
+      Reply.okDeviceKeySet: 'OK: device key set',
+      Reply.otaNone: 'OTA:NONE',
+      Reply.otaFailed: 'OTA:FAILED',
+      Reply.otaStarting: 'OTA:STARTING',
+    };
+    lines.forEach((actual, expected) => expect(actual, expected));
+
+    expect(Reply.field(Reply.firmware, '1.2.3'), 'FW:1.2.3');
+    expect(Reply.field(Reply.deviceKeySet, Reply.flagSet), 'DEVKEY_SET:1');
+    expect(Reply.field(Reply.passwordSet, Reply.flagUnset), 'PASS_SET:0');
+    expect(Reply.field(Reply.wifi, Reply.connected), 'WIFI:connected');
+    expect(Reply.field(Reply.wifi, Reply.disconnected), 'WIFI:disconnected');
+    expect(Reply.field(Reply.ip, Reply.noIp), 'IP:0.0.0.0');
+    expect(Reply.field(Reply.lastUpload, Reply.none), 'LAST_UPLOAD:none');
+    expect(Reply.field(Reply.ssid, 'Home'), 'SSID:Home');
+    expect(Reply.field(Reply.mac, 'AA'), 'MAC:AA');
+    expect(Reply.field(Reply.deviceId, 'd'), 'DEVID:d');
+    expect(Reply.field(Reply.latitude, '1'), 'LAT:1');
+    expect(Reply.field(Reply.longitude, '1'), 'LON:1');
+    expect(
+      Reply.field(Reply.network, '-61$listSeparator${Reply.open}'),
+      'NET:-61,open',
+    );
+    expect(Reply.field(Reply.network, Reply.secured), 'NET:secured');
+    expect(Reply.prefix(Reply.reading), 'READING:');
+    expect(
+      Reply.field(Reply.saveFailed, Reply.failedStorage),
+      'SAVE_FAILED:STORAGE',
+    );
+    expect(Reply.field(Reply.saveFailed, Reply.failedWifi), 'SAVE_FAILED:WIFI');
+    expect(Reply.okSet(Setter.latitude), 'OK: LAT');
+
+    const errors = {
+      DeviceErrorCode.scan: 'ERROR:SCAN',
+      DeviceErrorCode.noReading: 'ERROR:NO_READING',
+      DeviceErrorCode.storage: 'ERROR:STORAGE',
+      DeviceErrorCode.commandTooLong: 'ERROR:COMMAND_TOO_LONG',
+      DeviceErrorCode.invalidUtf8: 'ERROR:INVALID_UTF8',
+      DeviceErrorCode.invalidLat: 'ERROR:INVALID_LAT',
+      DeviceErrorCode.invalidLon: 'ERROR:INVALID_LON',
+      DeviceErrorCode.unknownCommand: 'ERROR:UNKNOWN_COMMAND',
+    };
+    errors.forEach((code, line) => expect('$errorPrefix$code', line));
   });
 }

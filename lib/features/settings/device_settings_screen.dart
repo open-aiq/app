@@ -89,11 +89,12 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
         isPublic: _public,
         isLocationPublic: _public && _locationPublic,
       );
+      if (!mounted) return;
       setState(() => _device = updated);
       widget.onChanged(updated);
       _snack('Settings saved');
-    } on ApiException catch (e) {
-      setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -236,7 +237,26 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
     await _withDevice('Resetting', (session) async {
       await session.clear();
       await ble.disconnect();
-      _snack('Monitor reset');
+      if (!mounted) return;
+      // The monitor forgot this phone, but the phone still remembers the
+      // monitor, and that stale pairing blocks the next one.
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Monitor reset'),
+          content: const Text(
+            "One more step before you pair again: open your phone's "
+            'Bluetooth settings and forget this monitor. Otherwise the '
+            "phone keeps the old pairing and can't reconnect.",
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Got it'),
+            ),
+          ],
+        ),
+      );
     });
   }
 
@@ -250,6 +270,7 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    setState(() => _error = null);
     try {
       if (services.ble.isConnectedTo(_device.deviceId)) {
         await services.ble.session!.clear().catchError((_) {});
@@ -257,8 +278,8 @@ class _DeviceSettingsViewState extends State<DeviceSettingsView> {
       }
       await services.api.deleteDevice(_device.id);
       if (mounted) widget.onDeleted();
-    } on ApiException catch (e) {
-      setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyError(e));
     }
   }
 
