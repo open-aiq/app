@@ -14,7 +14,7 @@ class AppConfig {
   static const docsUrl = 'https://docs.air-iq.net';
 
   /// The web dashboard, whose public map is linked from the avatar menu.
-  static const webUrl = 'https://open-airiq.web.app';
+  static const webUrl = 'https://open.air-iq.net';
 
   /// Clerk publishable key of the same Clerk instance the web dashboard uses.
   static const clerkPublishableKey = String.fromEnvironment(
