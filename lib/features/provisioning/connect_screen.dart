@@ -190,7 +190,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'Hold both buttons for 3 seconds until the screen shows PAIRING. '
+                        'Hold the pair button for 3 seconds until the screen shows PAIRING. '
                         'Bluetooth stays on for 5 minutes.',
                       ),
                     ],

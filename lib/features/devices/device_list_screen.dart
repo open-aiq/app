@@ -129,7 +129,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                     illustration: const MonitorIllustration(),
                     title: 'No monitors yet',
                     message:
-                        'Hold both buttons on your monitor for 3 seconds, '
+                        'Hold the pair button on your monitor for 3 seconds, '
                         'then add it here over Bluetooth.',
                     action: FilledButton.icon(
                       onPressed: _addMonitor,
